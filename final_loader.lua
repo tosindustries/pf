@@ -1,435 +1,701 @@
--- Initial setup
-repeat task.wait() until game:IsLoaded() and game.GameId ~= 0
+-- TOS Industries v1
+-- Copyright (c) 2024 TOS Industries. All rights reserved.
+-- This script is protected by various security measures.
+-- Unauthorized use, copying, or distribution is strictly prohibited.
 
-if not newcclosure and not getgc then
-    game:GetService("Players").LocalPlayer:Kick("Executor Not Supported!")
-end
-
-local Services = {
-    Players = game:GetService("Players"),
-    RunService = game:GetService("RunService"),
-    UserInputService = game:GetService("UserInputService"),
-    TweenService = game:GetService("TweenService"),
-    CoreGui = game:GetService("CoreGui"),
-    ReplicatedStorage = game:GetService("ReplicatedStorage")
-}
-
--- Get PF modules first
-local Modules = {}
-for i,v in next, getgc(true) do
-    if typeof(v) == "table" then
-        if rawget(v, "send") and rawget(v, "getPing") then
-            Modules.NetworkClient = v
-        elseif rawget(v, "new") and rawget(v, "setColor") and rawget(v, "step") then
-            Modules.BulletObject = v
-        elseif rawget(v, "removeEntry") and rawget(v, "operateOnAllEntries") and rawget(v, "getEntry") then
-            Modules.ReplicationInterface = v
-        end
-    end
-end
-
--- Setup environment
-xpcall(function()
-    local oldBulletObject_new = Modules.BulletObject.new
-    Modules.BulletObject.new = newcclosure(function(...)
-        local Args = {...}
-        if Args[1]["extra"] and AimAssist and AimAssist.Enabled then
-            local Target = GetClosestPlayer()
-            if Target then
-                Args[1]["velocity"] = (Target.Position - Args[1]["position"]).unit * Args[1]["extra"]["firearmObject"]:getWeaponStat("bulletspeed")
-            end
-        end
-        return oldBulletObject_new(table.unpack(Args))
-    end)
-end, function()
-    LocalPlayer:Kick('Check if you have "FFlagDebugRunParallelLuaOnMainThread" set to "True" or modules not found.')
-end)
-
--- Hook network send
-xpcall(function()
-    local oldNetwork_send = Modules.NetworkClient.send
-    Modules.NetworkClient.send = newcclosure(function(self, Name, ...)
-        local Args = {...}
-        if Name == "newbullets" and AimAssist and AimAssist.Enabled then
-            local UniqueId, BulletData, Time = ...
-            for i,v in next, BulletData["bullets"] do
-                local Target = GetClosestPlayer()
-                if Target then
-                    v[1] = (Target.Position - BulletData["firepos"]).unit
-                end
-            end
-            return oldNetwork_send(self, Name, UniqueId, BulletData, Time)
-        end
-        return oldNetwork_send(self, Name, ...)
-    end)
-end, function()
-    warn("Network hook failed")
-end)
-
-local LocalPlayer = Services.Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
-local State = {
-    LastTarget = nil,
-    LastAimTime = 0,
-    CurrentAcceleration = 0,
-    OveraimOffset = Vector3.new(),
-    ReactionDelay = 0,
-    ShakeOffset = Vector3.new(),
-    LastMouseMove = 0,
-    MouseVelocity = Vector2.new()
-}
-
-local ESPObjects = {}
-
--- Initialize configurations
-getgenv().AimAssist = setmetatable({
-    _SEC = "TOS_"..string.char(95,73,110,100,117,115,116,114,105,101,115),
-    Enabled = false,
-    Mode = "Silent",
-    FOV = 200,
-    TargetPart = "Head",
-    MaxDistance = 1000,
-    TeamCheck = true,
-    VisibilityCheck = true,
-    SmoothAim = {
-        Enabled = true,
-        Smoothness = 0.25
-    }
-}, {
-    __newindex = function(t, k, v)
-        if k:match("hack") or k:match("cheat") then return end
-        rawset(t, k, v)
-    end
-})
-
-getgenv().ESP = setmetatable({
-    _SEC = "TOS_"..string.char(95,73,110,100,117,115,116,114,105,101,115),
-    Enabled = false,
-    TeamCheck = true,
-    BoxEnabled = true,
-    BoxColor = Color3.fromRGB(255, 255, 255),
-    BoxThickness = 1,
-    BoxTransparency = 0.9,
-    NameEnabled = true,
-    HealthEnabled = true,
-    MaxDistance = 1000,
-    RefreshRate = 0.01
-}, {
-    __newindex = function(t, k, v)
-        if k:match("hack") or k:match("cheat") then return end
-        rawset(t, k, v)
-    end
-})
-
--- Core drawing functions
-local function CreateDrawing(type, properties)
-    local drawing = Drawing.new(type)
-    local success, result = pcall(function()
-        for property, value in pairs(properties) do
-            drawing[property] = value
-        end
-    end)
-    if not success then drawing:Remove() return nil end
-    return drawing
-end
-
-local function GetPartPosition(part)
-    local success, result = pcall(function()
-        return Camera:WorldToViewportPoint(part.Position)
-    end)
-    if not success then return Vector2.new(), false, 0 end
-    return Vector2.new(result.X, result.Y), result.Z > 0, result.Z
-end
-
--- ESP Functions
-local function CreateESPObject(player)
-    if player == LocalPlayer then return end
-    
-    local espObject = {
-        Box = {
-            Outline = CreateDrawing("Square", {
-                Thickness = ESP.BoxThickness + 2,
-                Color = Color3.new(0, 0, 0),
-                Transparency = ESP.BoxTransparency,
-                Filled = false,
-                Visible = false
-            }),
-            Main = CreateDrawing("Square", {
-                Thickness = ESP.BoxThickness,
-                Color = ESP.BoxColor,
-                Transparency = ESP.BoxTransparency,
-                Filled = false,
-                Visible = false
-            })
-        },
-        Name = CreateDrawing("Text", {
-            Text = player.Name,
-            Size = 13,
-            Center = true,
-            Outline = true,
-            Color = Color3.new(1, 1, 1),
-            Visible = false
-        }),
-        Health = CreateDrawing("Square", {
-            Thickness = 1,
-            Color = Color3.new(0, 1, 0),
-            Transparency = 0.9,
-            Filled = true,
-            Visible = false
-        })
-    }
-    
-    ESPObjects[player] = espObject
-end
-
-local function UpdateESP()
-    for player, espObject in pairs(ESPObjects) do
-        local character = player.Character
-        local humanoid = character and character:FindFirstChild("Humanoid")
-        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-        
-        if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
-            espObject.Box.Main.Visible = false
-            espObject.Box.Outline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            continue
-        end
-        
-        local pos, onScreen, distance = GetPartPosition(rootPart)
-        if not onScreen or distance > ESP.MaxDistance then
-            espObject.Box.Main.Visible = false
-            espObject.Box.Outline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            continue
-        end
-        
-        if ESP.TeamCheck and player.Team == LocalPlayer.Team then
-            espObject.Box.Main.Visible = false
-            espObject.Box.Outline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            continue
-        end
-        
-        local boxSize = Vector2.new(1500 / distance, 2000 / distance)
-        
-        if ESP.BoxEnabled then
-            espObject.Box.Main.Size = boxSize
-            espObject.Box.Main.Position = pos - boxSize / 2
-            espObject.Box.Main.Visible = true
-            
-            espObject.Box.Outline.Size = boxSize
-            espObject.Box.Outline.Position = pos - boxSize / 2
-            espObject.Box.Outline.Visible = true
-        end
-        
-        if ESP.NameEnabled then
-            espObject.Name.Position = Vector2.new(pos.X, pos.Y - boxSize.Y / 2 - 15)
-            espObject.Name.Visible = true
-        end
-        
-        if ESP.HealthEnabled then
-            local healthPercent = humanoid.Health / humanoid.MaxHealth
-            espObject.Health.Size = Vector2.new(2, boxSize.Y * healthPercent)
-            espObject.Health.Position = Vector2.new(pos.X - boxSize.X / 2 - 5, pos.Y - boxSize.Y / 2 + (boxSize.Y * (1 - healthPercent)))
-            espObject.Health.Color = Color3.fromRGB(255 * (1 - healthPercent), 255 * healthPercent, 0)
-            espObject.Health.Visible = true
-        end
-    end
-end
-
-local function GetClosestPlayer()
-    local ClosestPlayer = nil
-    local ClosestScore = math.huge
-    local MousePos = Services.UserInputService:GetMouseLocation()
-    
-    for _, player in pairs(Services.Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            local character = player.Character
-            if not character then continue end
-            
-            local humanoid = character:FindFirstChild("Humanoid")
-            if not humanoid or humanoid.Health <= 0 then continue end
-            
-            local part = character:FindFirstChild(AimAssist.TargetPart)
-            if not part then continue end
-            
-            local pos, onScreen, distance = GetPartPosition(part)
-            if not onScreen or distance > AimAssist.MaxDistance then continue end
-            
-            if AimAssist.TeamCheck and player.Team == LocalPlayer.Team then continue end
-            
-            if AimAssist.VisibilityCheck then
-                local ray = Ray.new(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000)
-                local hit = workspace:FindPartOnRayWithIgnoreList(ray, {Camera, LocalPlayer.Character, character})
-                if hit then continue end
-            end
-            
-            local mouseDistance = (pos - MousePos).Magnitude
-            if mouseDistance > AimAssist.FOV then continue end
-            
-            local score = (distance * 0.2) + (mouseDistance * 0.8)
-            if score < ClosestScore then
-                ClosestScore = score
-                ClosestPlayer = {
-                    Player = player,
-                    Part = part,
-                    Position = pos,
-                    Distance = distance
-                }
-            end
-        end
-    end
-    
-    return ClosestPlayer
-end
-
--- GUI Implementation
-local function CreateGui()
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "TOS_"..math.random(1000, 9999)
-    gui.Parent = gethui()
-    
-    local main = Instance.new("Frame")
-    main.Name = "Main"
-    main.Size = UDim2.new(0, 200, 0, 240)
-    main.Position = UDim2.new(0.5, -100, 0.5, -120)
-    main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    main.BorderSizePixel = 0
-    main.Parent = gui
-    main.Visible = false
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 30)
-    title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    title.BorderSizePixel = 0
-    title.Text = "TOS Industries PF"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 14
-    title.Parent = main
-    
-    local container = Instance.new("Frame")
-    container.Name = "Container"
-    container.Size = UDim2.new(1, -20, 1, -40)
-    container.Position = UDim2.new(0, 10, 0, 35)
-    container.BackgroundTransparency = 1
-    container.Parent = main
-    
-    local function CreateToggle(name, default, callback)
-        local toggle = Instance.new("TextButton")
-        toggle.Size = UDim2.new(1, 0, 0, 25)
-        toggle.BackgroundColor3 = default and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 64, 64)
-        toggle.BorderSizePixel = 0
-        toggle.Text = name
-        toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-        toggle.Font = Enum.Font.Gotham
-        toggle.TextSize = 14
-        toggle.Parent = container
-        toggle.AutoButtonColor = false
-        
-        local enabled = default
-        toggle.MouseButton1Click:Connect(function()
-            enabled = not enabled
-            toggle.BackgroundColor3 = enabled and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 64, 64)
-            callback(enabled)
-        end)
-        
-        return toggle
-    end
-    
-    local aimToggle = CreateToggle("Silent Aim", false, function(enabled)
-        AimAssist.Enabled = enabled
-    end)
-    
-    local espToggle = CreateToggle("ESP", false, function(enabled)
-        ESP.Enabled = enabled
-    end)
-    
-    local boxToggle = CreateToggle("Boxes", true, function(enabled)
-        ESP.BoxEnabled = enabled
-    end)
-    
-    local nameToggle = CreateToggle("Names", true, function(enabled)
-        ESP.NameEnabled = enabled
-    end)
-    
-    local healthToggle = CreateToggle("Health", true, function(enabled)
-        ESP.HealthEnabled = enabled
-    end)
-    
-    local teamToggle = CreateToggle("Team Check", true, function(enabled)
-        ESP.TeamCheck = enabled
-        AimAssist.TeamCheck = enabled
-    end)
-    
-    Services.UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.Delete then
-            main.Visible = not main.Visible
-        end
-    end)
-    
-    return gui
-end
-
--- Initialize
-local function Initialize()
-    local gui = CreateGui()
-    
-    -- Setup player handling
-    Services.Players.PlayerAdded:Connect(CreateESPObject)
-    Services.Players.PlayerRemoving:Connect(function(player)
-        if ESPObjects[player] then
-            for _, drawing in pairs(ESPObjects[player]) do
-                if type(drawing) == "table" then
-                    for _, obj in pairs(drawing) do
-                        if obj.Remove then obj:Remove() end
-                    end
-                elseif drawing.Remove then
-                    drawing:Remove()
-                end
-            end
-            ESPObjects[player] = nil
-        end
-    end)
-    
-    for _, player in pairs(Services.Players:GetPlayers()) do
-        CreateESPObject(player)
-    end
-    
-    -- Main loop
-    local lastUpdate = tick()
-    Services.RunService.RenderStepped:Connect(function()
-        if ESP.Enabled then
-            UpdateESP()
-        end
-        
-        if AimAssist.Enabled then
-            local target = GetClosestPlayer()
-            if target then
-                if AimAssist.Mode == "Silent" then
-                    -- Silent aim handled by hooks
-                elseif AimAssist.SmoothAim.Enabled then
-                    local mousePos = Services.UserInputService:GetMouseLocation()
-                    local aimDelta = (target.Position - mousePos)
-                    mousemoverel(
-                        aimDelta.X * AimAssist.SmoothAim.Smoothness,
-                        aimDelta.Y * AimAssist.SmoothAim.Smoothness
-                    )
-                end
-            end
-        end
-    end)
-    
+-- Initial security and validation
+local function validateExecution()
+    local env = getfenv(0)
+    if env.game ~= game then return false end
+    if not game:IsLoaded() then game.Loaded:Wait() end
+    if game.PlaceId ~= 292439477 then return false end
+    if not game:GetService("Players").LocalPlayer then return false end
     return true
 end
 
-if not Initialize() then
-    warn("TOS Industries PF failed to initialize")
+if not validateExecution() then
+    warn("Validation failed - Execution terminated")
     return false
 end
 
+-- Anti-tamper protection
+local function setupAntiTamper()
+    local mt = getrawmetatable(game)
+    local old = mt.__namecall
+    setreadonly(mt, false)
+    
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "HttpGet" or method == "HttpPost" then
+            local args = {...}
+            if typeof(args[1]) == "string" and args[1]:match("tos%-industries") then
+                return old(self, ...)
+            end
+        end
+        if method:match("Kick") or method:match("kick") then
+            return wait(9e9)
+        end
+        return old(self, ...)
+    end)
+    
+    setreadonly(mt, true)
+end
+
+-- Memory protection
+local function protectMemory()
+    local fenv = getfenv()
+    local protected = {}
+    
+    for k,v in pairs(fenv) do
+        protected[k] = type(v) == "function" and function(...)
+            local info = debug.getinfo(2, "n")
+            if info and info.name and (info.name:match("Anti") or info.name:match("Check")) then
+                return true
+            end
+            return v(...)
+        end or v
+    end
+    
+    protected._G = setmetatable({}, {
+        __index = _G,
+        __newindex = function() end,
+        __metatable = "Protected"
+    })
+    
+    return protected
+end
+
+-- Initial checks and security setup
+repeat task.wait() until game:IsLoaded() and game.GameId ~= 0
+
+-- Security setup first
+local function initSecureEnv()
+    local env = getfenv(1)
+    local protected = {}
+    
+    for k,v in pairs(env) do
+        protected[k] = v
+    end
+    
+    protected.game = setmetatable({}, {
+        __index = function(_, k)
+            if k:match("Security") or k:match("Anti") then return function() return true end end
+            return game[k]
+        end,
+        __metatable = "Locked"
+    })
+    
+    return setmetatable(protected, {
+        __index = function(_, k)
+            if k:match("hack") or k:match("cheat") then return nil end
+            return env[k]
+        end,
+        __metatable = "Locked"
+    })
+end
+
+-- Memory protection
+local function setupMemoryProtection()
+    local fakeEnv = {}
+    local realEnv = getrenv()
+    
+    for k,v in pairs(realEnv) do
+        if type(v) == "function" then
+            fakeEnv[k] = function(...)
+                local name = debug.getinfo(2, "n").name
+                if name and (name:match("Anti") or name:match("Check")) then
+                    return true
+                end
+                return v(...)
+            end
+        else
+            fakeEnv[k] = v
+        end
+    end
+    
+    debug.setupvalue(getfenv, 1, fakeEnv)
+end
+
+-- Hook protection
+local function setupHooks()
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "Kick" or method == "kick" then return wait(9e9) end
+        if method:match("Security") or method:match("Anti") then return true end
+        return oldNamecall(self, ...)
+    end))
+end
+
+-- Apply security
+local secureEnv = initSecureEnv()
+setupMemoryProtection()
+setupHooks()
+setfenv(1, secureEnv)
+
+-- Services with error handling
+local Services = setmetatable({}, {
+    __index = function(self, key)
+        local success, service = pcall(game.GetService, game, key)
+        if success then
+            self[key] = service
+            return service
+        end
+        warn("Failed to get service:", key)
+        return nil
+    end
+})
+
+-- Core services
+local Players = Services.Players
+local RunService = Services.RunService
+local UserInputService = Services.UserInputService
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+if not LocalPlayer or not Camera then
+    warn("Failed to initialize - core components not found")
+    return false
+end
+
+-- Get PF modules with validation
+local Modules = {}
+local success, result = pcall(function()
+    for i,v in next, getgc(true) do
+        if typeof(v) == "table" then
+            if rawget(v, "send") and rawget(v, "getPing") then
+                Modules.NetworkClient = v
+            elseif rawget(v, "new") and rawget(v, "setColor") and rawget(v, "step") then
+                Modules.BulletObject = v
+            elseif rawget(v, "getController") then
+                Modules.Camera = v
+            end
+        end
+    end
+end)
+
+if not success or not Modules.NetworkClient or not Modules.BulletObject then
+    warn("Failed to get required modules")
+    return false
+end
+
+-- ESP Component
+local ESP = {
+    Enabled = false,
+    BoxEnabled = false,
+    SkeletonEnabled = false,
+    NameEnabled = false,
+    HealthEnabled = false,
+    TeamCheck = true,
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    SkeletonColor = Color3.fromRGB(255, 255, 255),
+    TextColor = Color3.fromRGB(255, 255, 255),
+    TextSize = 14,
+    MaxDistance = 1000,
+    Players = {},
+    Connections = {}
+}
+
+-- Aimbot Component
+local Aimbot = {
+    Enabled = false,
+    TeamCheck = true,
+    VisibilityCheck = true,
+    TargetPart = "Head",
+    Smoothness = 1,
+    FOV = 100,
+    MaxDistance = 1000,
+    CurrentTarget = nil
+}
+
+-- ESP Functions
+function ESP:CreateDrawings()
+    local player = {}
+    player.Box = Drawing.new("Square")
+    player.Box.Thickness = 1
+    player.Box.Filled = false
+    player.Box.Visible = false
+    player.Box.Color = self.BoxColor
+    player.Box.Transparency = 1
+
+    player.Name = Drawing.new("Text")
+    player.Name.Center = true
+    player.Name.Size = self.TextSize
+    player.Name.Outline = true
+    player.Name.Visible = false
+    player.Name.Color = self.TextColor
+
+    player.Health = Drawing.new("Text")
+    player.Health.Center = true
+    player.Health.Size = self.TextSize
+    player.Health.Outline = true
+    player.Health.Visible = false
+    player.Health.Color = self.TextColor
+
+    player.Skeleton = {}
+    local SkeletonPoints = {
+        "Head-UpperTorso",
+        "UpperTorso-LowerTorso",
+        "UpperTorso-LeftUpperArm",
+        "LeftUpperArm-LeftLowerArm",
+        "UpperTorso-RightUpperArm",
+        "RightUpperArm-RightLowerArm",
+        "LowerTorso-LeftUpperLeg",
+        "LeftUpperLeg-LeftLowerLeg",
+        "LowerTorso-RightUpperLeg",
+        "RightUpperLeg-RightLowerLeg"
+    }
+
+    for _, point in pairs(SkeletonPoints) do
+        local line = Drawing.new("Line")
+        line.Thickness = 1
+        line.Visible = false
+        line.Color = self.SkeletonColor
+        player.Skeleton[point] = line
+    end
+
+    return player
+end
+
+function ESP:GetCharacter(player)
+    local character = player.Character
+    if not character then return nil end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    
+    if not humanoid or not rootPart then return nil end
+    if humanoid.Health <= 0 then return nil end
+    
+    return character, humanoid, rootPart
+end
+
+function ESP:IsTeammate(player)
+    if not self.TeamCheck then return false end
+    return player.Team == LocalPlayer.Team
+end
+
+function ESP:GetBoxPositions(character)
+    local cframe = character:GetBoundingBox()
+    local size = cframe.Size
+    local position = cframe.Position
+    
+    local viewportSize = Camera.ViewportSize
+    local screenPosition, onScreen = Camera:WorldToViewportPoint(position)
+    if not onScreen then return nil end
+    
+    local sizeX = math.abs(Camera:WorldToViewportPoint(position + Vector3.new(size.X/2, 0, 0)).X - Camera:WorldToViewportPoint(position - Vector3.new(size.X/2, 0, 0)).X)
+    local sizeY = math.abs(Camera:WorldToViewportPoint(position + Vector3.new(0, size.Y/2, 0)).Y - Camera:WorldToViewportPoint(position - Vector3.new(0, size.Y/2, 0)).Y)
+    
+    return Vector2.new(screenPosition.X - sizeX/2, screenPosition.Y - sizeY/2), Vector2.new(sizeX, sizeY)
+end
+
+function ESP:UpdateESP()
+    for player, drawings in pairs(self.Players) do
+        if not player or not player.Parent then
+            self:RemovePlayer(player)
+            continue
+        end
+
+        local character, humanoid, rootPart = self:GetCharacter(player)
+        if not character or self:IsTeammate(player) then
+            self:ToggleDrawings(drawings, false)
+            continue
+        end
+
+        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+        if distance > self.MaxDistance then
+            self:ToggleDrawings(drawings, false)
+            continue
+        end
+
+        local boxPos, boxSize = self:GetBoxPositions(character)
+        if not boxPos then
+            self:ToggleDrawings(drawings, false)
+            continue
+        end
+
+        -- Update Box
+        if self.BoxEnabled then
+            drawings.Box.Visible = true
+            drawings.Box.Position = boxPos
+            drawings.Box.Size = boxSize
+        else
+            drawings.Box.Visible = false
+        end
+
+        -- Update Name
+        if self.NameEnabled then
+            drawings.Name.Visible = true
+            drawings.Name.Position = Vector2.new(boxPos.X + boxSize.X/2, boxPos.Y - 20)
+            drawings.Name.Text = player.Name
+        else
+            drawings.Name.Visible = false
+        end
+
+        -- Update Health
+        if self.HealthEnabled and humanoid then
+            drawings.Health.Visible = true
+            drawings.Health.Position = Vector2.new(boxPos.X + boxSize.X/2, boxPos.Y + boxSize.Y + 5)
+            drawings.Health.Text = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+            drawings.Health.Color = Color3.fromHSV(humanoid.Health/humanoid.MaxHealth * 0.3, 1, 1)
+        else
+            drawings.Health.Visible = false
+        end
+
+        -- Update Skeleton
+        if self.SkeletonEnabled then
+            self:UpdateSkeleton(character, drawings.Skeleton)
+        else
+            for _, line in pairs(drawings.Skeleton) do
+                line.Visible = false
+            end
+        end
+    end
+end
+
+function ESP:UpdateSkeleton(character, skeletonDrawings)
+    local function getPartPosition(part)
+        if not part then return nil end
+        local position = Camera:WorldToViewportPoint(part.Position)
+        if position.Z < 0 then return nil end
+        return Vector2.new(position.X, position.Y)
+    end
+
+    for connection, line in pairs(skeletonDrawings) do
+        local part1, part2 = unpack(connection:split("-"))
+        local pos1 = getPartPosition(character:FindFirstChild(part1))
+        local pos2 = getPartPosition(character:FindFirstChild(part2))
+        
+        if pos1 and pos2 then
+            line.Visible = true
+            line.From = pos1
+            line.To = pos2
+        else
+            line.Visible = false
+        end
+    end
+end
+
+function ESP:ToggleDrawings(drawings, visible)
+    drawings.Box.Visible = visible and self.BoxEnabled
+    drawings.Name.Visible = visible and self.NameEnabled
+    drawings.Health.Visible = visible and self.HealthEnabled
+    
+    if drawings.Skeleton then
+        for _, line in pairs(drawings.Skeleton) do
+            line.Visible = visible and self.SkeletonEnabled
+        end
+    end
+end
+
+function ESP:AddPlayer(player)
+    if self.Players[player] then return end
+    self.Players[player] = self:CreateDrawings()
+end
+
+function ESP:RemovePlayer(player)
+    local drawings = self.Players[player]
+    if not drawings then return end
+    
+    for _, drawing in pairs(drawings) do
+        if type(drawing) == "table" then
+            for _, line in pairs(drawing) do
+                line:Remove()
+            end
+        else
+            drawing:Remove()
+        end
+    end
+    
+    self.Players[player] = nil
+end
+
+-- Aimbot Functions
+function Aimbot:GetClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    local mousePos = UserInputService:GetMouseLocation()
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        if self.TeamCheck and player.Team == LocalPlayer.Team then continue end
+
+        local character, humanoid, rootPart = ESP:GetCharacter(player)
+        if not character then continue end
+
+        local targetPart = character:FindFirstChild(self.TargetPart)
+        if not targetPart then continue end
+
+        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+        if not onScreen then continue end
+
+        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+        if distance > self.MaxDistance then continue end
+
+        local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+        if screenDistance > self.FOV then continue end
+
+        if self.VisibilityCheck then
+            local ray = Ray.new(Camera.CFrame.Position, targetPart.Position - Camera.CFrame.Position)
+            local hit = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, character})
+            if hit then continue end
+        end
+
+        if screenDistance < shortestDistance then
+            closestPlayer = player
+            shortestDistance = screenDistance
+        end
+    end
+
+    return closestPlayer
+end
+
+function Aimbot:Update()
+    if not self.Enabled then 
+        self.CurrentTarget = nil
+        return 
+    end
+
+    self.CurrentTarget = self:GetClosestPlayer()
+    if not self.CurrentTarget then return end
+
+    local character = self.CurrentTarget.Character
+    if not character then return end
+
+    local targetPart = character:FindFirstChild(self.TargetPart)
+    if not targetPart then return end
+
+    local targetPos = targetPart.Position
+    local cameraPos = Camera.CFrame.Position
+    local targetRotation = CFrame.lookAt(cameraPos, targetPos)
+    
+    -- Smooth aim
+    local currentRotation = Camera.CFrame.Rotation
+    local smoothRotation = currentRotation:Lerp(targetRotation, 1 - math.pow(0.02, self.Smoothness))
+    
+    if Modules.Camera and Modules.Camera.setRoll then
+        Modules.Camera:setRoll(smoothRotation)
+    else
+        Camera.CFrame = CFrame.new(cameraPos) * smoothRotation
+    end
+end
+
+-- Initialize security
+local success, result = pcall(function()
+    setupAntiTamper()
+    local protectedEnv = protectMemory()
+    setfenv(1, protectedEnv)
+    
+    -- Additional security checks
+    for _, v in pairs(getconnections(game:GetService("Players").LocalPlayer.Idled)) do
+        v:Disable()
+    end
+    
+    -- Anti-debug
+    if debug.info or debug.traceback then
+        local old = debug.info
+        debug.info = function(...)
+            local info = old(...)
+            if info and type(info) == "string" and (info:match("Anti") or info:match("Check")) then
+                return ""
+            end
+            return info
+        end
+    end
+end)
+
+if not success then
+    warn("Security initialization failed")
+    return false
+end
+
+-- Initialize core components
+local initialized = false
+local function init()
+    if initialized then return end
+    
+    -- Initialize ESP
+    for _, player in pairs(Players:GetPlayers()) do
+        ESP:AddPlayer(player)
+    end
+    
+    -- Set up connections
+    ESP.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
+        ESP:AddPlayer(player)
+    end)
+    
+    ESP.Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
+        ESP:RemovePlayer(player)
+    end)
+    
+    -- Set up update loop
+    RunService.RenderStepped:Connect(function()
+        if ESP.Enabled then
+            ESP:UpdateESP()
+        end
+        if Aimbot.Enabled then
+            Aimbot:Update()
+        end
+    end)
+    
+    initialized = true
+end
+
+-- Start initialization
+if game:IsLoaded() then
+    init()
+else
+    game.Loaded:Wait()
+    init()
+end
+
+-- Return success
 return true
+
+-- GUI Component
+local Library = loadstring(game:HttpGet('https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/wally2'))()
+
+local Window = Library:CreateWindow("TOS Industries v1")
+
+-- Main Window
+local MainTab = Window:CreateFolder("Main")
+local VisualsTab = Window:CreateFolder("Visuals")
+local AimbotTab = Window:CreateFolder("Aimbot")
+local SettingsTab = Window:CreateFolder("Settings")
+
+-- Main Tab
+MainTab:Toggle("Enable", function(bool)
+    ESP.Enabled = bool
+    Aimbot.Enabled = bool
+end)
+
+MainTab:Toggle("Team Check", function(bool)
+    ESP.TeamCheck = bool
+    Aimbot.TeamCheck = bool
+end)
+
+-- Visuals Tab
+VisualsTab:Toggle("Box ESP", function(bool)
+    ESP.BoxEnabled = bool
+end)
+
+VisualsTab:Toggle("Skeleton ESP", function(bool)
+    ESP.SkeletonEnabled = bool
+end)
+
+VisualsTab:Toggle("Name ESP", function(bool)
+    ESP.NameEnabled = bool
+end)
+
+VisualsTab:Toggle("Health ESP", function(bool)
+    ESP.HealthEnabled = bool
+end)
+
+VisualsTab:ColorPicker("Box Color", Color3.fromRGB(255, 255, 255), function(color)
+    ESP.BoxColor = color
+end)
+
+VisualsTab:ColorPicker("Skeleton Color", Color3.fromRGB(255, 255, 255), function(color)
+    ESP.SkeletonColor = color
+end)
+
+VisualsTab:ColorPicker("Text Color", Color3.fromRGB(255, 255, 255), function(color)
+    ESP.TextColor = color
+end)
+
+VisualsTab:Slider("Max Distance", {
+    min = 100,
+    max = 2000,
+    precise = false
+}, function(value)
+    ESP.MaxDistance = value
+end)
+
+-- Aimbot Tab
+AimbotTab:Toggle("Enable Aimbot", function(bool)
+    Aimbot.Enabled = bool
+end)
+
+AimbotTab:Toggle("Visibility Check", function(bool)
+    Aimbot.VisibilityCheck = bool
+end)
+
+AimbotTab:Dropdown("Target Part", {"Head", "UpperTorso", "HumanoidRootPart"}, function(selected)
+    Aimbot.TargetPart = selected
+end)
+
+AimbotTab:Slider("Smoothness", {
+    min = 1,
+    max = 10,
+    precise = true
+}, function(value)
+    Aimbot.Smoothness = value
+end)
+
+AimbotTab:Slider("FOV", {
+    min = 30,
+    max = 500,
+    precise = false
+}, function(value)
+    Aimbot.FOV = value
+end)
+
+AimbotTab:Slider("Max Distance", {
+    min = 100,
+    max = 2000,
+    precise = false
+}, function(value)
+    Aimbot.MaxDistance = value
+end)
+
+-- Settings Tab
+SettingsTab:Button("Unload", function()
+    -- Clean up ESP
+    for player, drawings in pairs(ESP.Players) do
+        ESP:RemovePlayer(player)
+    end
+    
+    -- Disconnect all connections
+    for _, connection in pairs(ESP.Connections) do
+        connection:Disconnect()
+    end
+    
+    -- Remove GUI
+    for _, obj in pairs(game:GetDescendants()) do
+        if obj.Name == "TOS Industries v1" then
+            obj:Destroy()
+        end
+    end
+end)
+
+SettingsTab:Label("TOS Industries v1", {
+    TextSize = 20,
+    TextColor = Color3.fromRGB(255, 255, 255),
+    BgColor = Color3.fromRGB(69, 69, 69)
+})
+
+-- Keybinds
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed then
+        if input.KeyCode == Enum.KeyCode.RightAlt then
+            Window:Toggle()
+        end
+    end
+end)
+
+-- Watermark
+local watermark = Drawing.new("Text")
+watermark.Visible = true
+watermark.Position = Vector2.new(10, 10)
+watermark.Size = 20
+watermark.Color = Color3.fromRGB(255, 255, 255)
+watermark.Text = "TOS Industries v1"
+watermark.Outline = true
+watermark.Center = false
+
+-- Update watermark position on viewport resize
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    watermark.Position = Vector2.new(10, 10)
+end)
