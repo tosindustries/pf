@@ -290,6 +290,184 @@ local function startScript()
         }
     end
     
+    function UI.createSlider(text, parent, min, max, default, callback)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 0, 45)
+        container.BackgroundTransparency = 1
+        container.Parent = parent
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -10, 0, 20)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text .. ": " .. (default or min)
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamSemibold
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = container
+        
+        local sliderBG = Instance.new("Frame")
+        sliderBG.Name = "SliderBG"
+        sliderBG.Size = UDim2.new(1, -20, 0, 6)
+        sliderBG.Position = UDim2.new(0, 10, 0, 30)
+        sliderBG.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        sliderBG.BorderSizePixel = 0
+        sliderBG.Parent = container
+        
+        local uiCorner = Instance.new("UICorner")
+        uiCorner.CornerRadius = UDim.new(1, 0)
+        uiCorner.Parent = sliderBG
+        
+        local sliderFill = Instance.new("Frame")
+        sliderFill.Size = UDim2.new(0.5, 0, 1, 0)
+        sliderFill.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+        sliderFill.BorderSizePixel = 0
+        sliderFill.Parent = sliderBG
+        
+        local fillCorner = Instance.new("UICorner")
+        fillCorner.CornerRadius = UDim.new(1, 0)
+        fillCorner.Parent = sliderFill
+        
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 16, 0, 16)
+        knob.Position = UDim2.new(0.5, -8, 0.5, -8)
+        knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        knob.BorderSizePixel = 0
+        knob.ZIndex = 2
+        knob.Parent = sliderFill
+        
+        local knobCorner = Instance.new("UICorner")
+        knobCorner.CornerRadius = UDim.new(1, 0)
+        knobCorner.Parent = knob
+        
+        local value = default or min
+        local dragging = false
+        local dragConnection
+        local endConnection
+        
+        local function updateSlider(input)
+            local pos = math.clamp((input.Position.X - sliderBG.AbsolutePosition.X) / sliderBG.AbsoluteSize.X, 0, 1)
+            value = math.floor(min + (max - min) * pos)
+            sliderFill.Size = UDim2.new(pos, 0, 1, 0)
+            label.Text = text .. ": " .. value
+            callback(value)
+        end
+        
+        sliderBG.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                updateSlider(input)
+                
+                dragConnection = UserInputService.InputChanged:Connect(function(input)
+                    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                        updateSlider(input)
+                    end
+                end)
+                
+                endConnection = UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = false
+                        if dragConnection then dragConnection:Disconnect() end
+                        if endConnection then endConnection:Disconnect() end
+                    end
+                end)
+            end
+        end)
+        
+        return {
+            Frame = container,
+            SetValue = function(newValue)
+                value = math.clamp(newValue, min, max)
+                local pos = (value - min) / (max - min)
+                sliderFill.Size = UDim2.new(pos, 0, 1, 0)
+                label.Text = text .. ": " .. value
+                callback(value)
+            end
+        }
+    end
+    
+    function UI.createColorPicker(text, parent, default, callback)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 0, 30)
+        container.BackgroundTransparency = 1
+        container.Parent = parent
+        
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 1, 0)
+        button.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        button.BorderSizePixel = 0
+        button.Text = ""
+        button.Parent = container
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -50, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamSemibold
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = button
+        
+        local preview = Instance.new("Frame")
+        preview.Size = UDim2.new(0, 30, 0, 20)
+        preview.Position = UDim2.new(1, -40, 0.5, -10)
+        preview.BackgroundColor3 = default or Color3.fromRGB(255, 255, 255)
+        preview.BorderSizePixel = 0
+        preview.Parent = button
+        
+        local uiCorner = Instance.new("UICorner")
+        uiCorner.CornerRadius = UDim.new(0, 4)
+        uiCorner.Parent = preview
+        
+        button.MouseButton1Click:Connect(function()
+            local picker = Instance.new("Frame")
+            picker.Size = UDim2.new(0, 200, 0, 220)
+            picker.Position = UDim2.new(1, 10, 0, 0)
+            picker.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+            picker.BorderSizePixel = 0
+            picker.Visible = true
+            picker.Parent = container
+            
+            local pickerCorner = Instance.new("UICorner")
+            pickerCorner.CornerRadius = UDim.new(0, 6)
+            pickerCorner.Parent = picker
+            
+            -- Add color picker UI elements here
+            -- This is a simplified version, you can expand it with RGB sliders
+            local function updateColor(color)
+                preview.BackgroundColor3 = color
+                callback(color)
+            end
+            
+            -- Close picker when clicking outside
+            local connection
+            connection = UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    local position = input.Position
+                    local pickerPos = picker.AbsolutePosition
+                    local pickerSize = picker.AbsoluteSize
+                    
+                    if position.X < pickerPos.X or position.X > pickerPos.X + pickerSize.X or
+                       position.Y < pickerPos.Y or position.Y > pickerPos.Y + pickerSize.Y then
+                        picker:Destroy()
+                        connection:Disconnect()
+                    end
+                end
+            end)
+        end)
+        
+        return {
+            Frame = container,
+            SetColor = function(color)
+                preview.BackgroundColor3 = color
+                callback(color)
+            end
+        }
+    end
+    
     function ESP:CreatePlayer(player)
         if self.Players[player] then return end
         
@@ -525,6 +703,19 @@ local function startScript()
         fovCircle.Visible = state
     end)
     
+    local fovSlider = UI.createSlider("FOV Size", ui.Tabs.Combat.Container, 10, 800, 100, function(value)
+        Aimbot.FOV = value
+        fovCircle.Radius = value
+    end)
+    
+    local smoothnessSlider = UI.createSlider("Smoothness", ui.Tabs.Combat.Container, 1, 10, 2, function(value)
+        Aimbot.Smoothness = value
+    end)
+    
+    local fovColorPicker = UI.createColorPicker("FOV Circle Color", ui.Tabs.Combat.Container, Color3.fromRGB(255, 255, 255), function(color)
+        fovCircle.Color = color
+    end)
+    
     local teamCheckToggle = UI.createToggle("Team Check", ui.Tabs.Combat.Container, function(state)
         Aimbot.TeamCheck = state
     end)
@@ -604,6 +795,8 @@ local function startScript()
     
     -- Set initial states
     aimbotToggle.SetState(false)
+    fovSlider.SetValue(100)
+    smoothnessSlider.SetValue(2)
     teamCheckToggle.SetState(false)
     visibilityCheckToggle.SetState(false)
     predictionToggle.SetState(true)
