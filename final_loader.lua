@@ -377,6 +377,8 @@ local function startScript()
         
         local value = default or min
         local dragging = false
+        local dragConnection
+        local endConnection
         
         local function updateSlider(input)
             local pos = math.clamp((input.Position.X - sliderBG.AbsolutePosition.X) / sliderBG.AbsoluteSize.X, 0, 1)
@@ -390,18 +392,20 @@ local function startScript()
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = true
                 updateSlider(input)
-            end
-        end)
-        
-        UserInputService.InputChanged:Connect(function(input)
-            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                updateSlider(input)
-            end
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
+                
+                dragConnection = UserInputService.InputChanged:Connect(function(input)
+                    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                        updateSlider(input)
+                    end
+                end)
+                
+                endConnection = UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = false
+                        if dragConnection then dragConnection:Disconnect() end
+                        if endConnection then endConnection:Disconnect() end
+                    end
+                end)
             end
         end)
         
@@ -492,13 +496,23 @@ local function startScript()
         local config = {
             aimbot = {
                 enabled = false,
-                active = false,  -- New toggle state
+                active = false,
                 fov = 100,
                 smoothness = 2,
                 prediction = true,
                 targetPart = "Head",
                 key = Enum.KeyCode.E,
-                snapline = false
+                snapline = false,
+                teamCheck = true,
+                visibilityCheck = true,
+                hitChance = 100,
+                autoShoot = false,
+                autoWall = false,
+                silentAim = false,
+                randomization = 0,
+                maxDistance = 1000,
+                unlockOnDeath = true,
+                targetPriority = "Distance" -- Distance, Health, Random
             },
             esp = {
                 enabled = false,
@@ -506,7 +520,16 @@ local function startScript()
                 tracers = true,
                 names = true,
                 health = true,
-                team = false
+                team = false,
+                distance = true,
+                skeleton = false,
+                boxColor = Color3.fromRGB(255, 255, 255),
+                tracerColor = Color3.fromRGB(255, 255, 255),
+                textColor = Color3.fromRGB(255, 255, 255),
+                textSize = 13,
+                textOutline = true,
+                maxDistance = 1000,
+                refreshRate = 10
             },
             settings = {
                 toggleKey = Enum.KeyCode.RightShift
@@ -523,6 +546,30 @@ local function startScript()
             end
         end)
         
+        local silentAimToggle = UI.createToggle("Silent Aim", ui.Tabs.Combat.Container, function(state)
+            config.aimbot.silentAim = state
+        end)
+        
+        local autoShootToggle = UI.createToggle("Auto Shoot", ui.Tabs.Combat.Container, function(state)
+            config.aimbot.autoShoot = state
+        end)
+        
+        local teamCheckToggle = UI.createToggle("Team Check", ui.Tabs.Combat.Container, function(state)
+            config.aimbot.teamCheck = state
+        end)
+        
+        local visibilityCheckToggle = UI.createToggle("Visibility Check", ui.Tabs.Combat.Container, function(state)
+            config.aimbot.visibilityCheck = state
+        end)
+        
+        local predictionToggle = UI.createToggle("Prediction", ui.Tabs.Combat.Container, function(state)
+            config.aimbot.prediction = state
+        end)
+        
+        local autoWallToggle = UI.createToggle("Auto Wall", ui.Tabs.Combat.Container, function(state)
+            config.aimbot.autoWall = state
+        end)
+        
         local fovSlider = UI.createSlider("FOV", ui.Tabs.Combat.Container, 10, 800, config.aimbot.fov, function(value)
             config.aimbot.fov = value
             fovCircle.Radius = value
@@ -530,6 +577,18 @@ local function startScript()
         
         local smoothnessSlider = UI.createSlider("Smoothness", ui.Tabs.Combat.Container, 1, 10, config.aimbot.smoothness, function(value)
             config.aimbot.smoothness = value
+        end)
+        
+        local hitChanceSlider = UI.createSlider("Hit Chance", ui.Tabs.Combat.Container, 1, 100, config.aimbot.hitChance, function(value)
+            config.aimbot.hitChance = value
+        end)
+        
+        local randomizationSlider = UI.createSlider("Randomization", ui.Tabs.Combat.Container, 0, 100, config.aimbot.randomization, function(value)
+            config.aimbot.randomization = value
+        end)
+        
+        local maxDistanceSlider = UI.createSlider("Max Distance", ui.Tabs.Combat.Container, 100, 2000, config.aimbot.maxDistance, function(value)
+            config.aimbot.maxDistance = value
         end)
         
         local aimbotKey = UI.createKeybind("Aimbot Key", ui.Tabs.Combat.Container, config.aimbot.key, function(key)
@@ -557,6 +616,22 @@ local function startScript()
             config.esp.health = state
         end)
         
+        local distanceToggle = UI.createToggle("Show Distance", ui.Tabs.Visuals.Container, function(state)
+            config.esp.distance = state
+        end)
+        
+        local skeletonToggle = UI.createToggle("Show Skeleton", ui.Tabs.Visuals.Container, function(state)
+            config.esp.skeleton = state
+        end)
+        
+        local espTextSizeSlider = UI.createSlider("Text Size", ui.Tabs.Visuals.Container, 10, 20, config.esp.textSize, function(value)
+            config.esp.textSize = value
+        end)
+        
+        local espMaxDistanceSlider = UI.createSlider("ESP Max Distance", ui.Tabs.Visuals.Container, 100, 2000, config.esp.maxDistance, function(value)
+            config.esp.maxDistance = value
+        end)
+        
         -- Settings Tab
         local toggleKeyBind = UI.createKeybind("Toggle Menu", ui.Tabs.Settings.Container, config.settings.toggleKey, function(key)
             config.settings.toggleKey = key
@@ -564,20 +639,27 @@ local function startScript()
         
         -- Initialize values
         aimbotToggle.SetState(config.aimbot.enabled)
+        silentAimToggle.SetState(config.aimbot.silentAim)
+        autoShootToggle.SetState(config.aimbot.autoShoot)
+        teamCheckToggle.SetState(config.aimbot.teamCheck)
+        visibilityCheckToggle.SetState(config.aimbot.visibilityCheck)
+        predictionToggle.SetState(config.aimbot.prediction)
+        autoWallToggle.SetState(config.aimbot.autoWall)
         fovSlider.SetValue(config.aimbot.fov)
         smoothnessSlider.SetValue(config.aimbot.smoothness)
+        hitChanceSlider.SetValue(config.aimbot.hitChance)
+        randomizationSlider.SetValue(config.aimbot.randomization)
+        maxDistanceSlider.SetValue(config.aimbot.maxDistance)
+        
         espToggle.SetState(config.esp.enabled)
         boxesToggle.SetState(config.esp.boxes)
         tracersToggle.SetState(config.esp.tracers)
         namesToggle.SetState(config.esp.names)
         healthToggle.SetState(config.esp.health)
-        
-        -- Toggle menu visibility with keybind
-        UserInputService.InputBegan:Connect(function(input)
-            if input.KeyCode == config.settings.toggleKey then
-                ui.MainFrame.Visible = not ui.MainFrame.Visible
-            end
-        end)
+        distanceToggle.SetState(config.esp.distance)
+        skeletonToggle.SetState(config.esp.skeleton)
+        espTextSizeSlider.SetValue(config.esp.textSize)
+        espMaxDistanceSlider.SetValue(config.esp.maxDistance)
         
         return ui, config
     end
@@ -604,55 +686,61 @@ local function startScript()
             Box = Drawing.new("Square"),
             BoxOutline = Drawing.new("Square"),
             Name = Drawing.new("Text"),
+            Distance = Drawing.new("Text"),
             HealthBar = Drawing.new("Square"),
             HealthBarOutline = Drawing.new("Square"),
-            Tracer = Drawing.new("Line")
+            Tracer = Drawing.new("Line"),
+            Skeleton = {
+                Head = Drawing.new("Line"),
+                Torso = Drawing.new("Line"),
+                LeftArm = Drawing.new("Line"),
+                RightArm = Drawing.new("Line"),
+                LeftLeg = Drawing.new("Line"),
+                RightLeg = Drawing.new("Line")
+            }
         }
         
-        -- Verify all drawings were created successfully
-        for name, drawing in pairs(drawings) do
-            if not drawing then
-                warn("Failed to create drawing:", name)
-                -- Clean up any successfully created drawings
-                for _, d in pairs(drawings) do
-                    if d then d:Remove() end
-                end
-                return
-            end
+        -- Box settings
+        for _, drawing in pairs({drawings.Box, drawings.BoxOutline}) do
+            drawing.Thickness = drawing == drawings.BoxOutline and 3 or 1
+            drawing.Color = drawing == drawings.BoxOutline and Color3.new(0, 0, 0) or config.esp.boxColor
+            drawing.Filled = false
+            drawing.Transparency = 1
+            drawing.Visible = false
         end
         
-        -- Box settings
-        drawings.BoxOutline.Thickness = 3
-        drawings.BoxOutline.Color = Color3.fromRGB(0, 0, 0)
-        drawings.BoxOutline.Filled = false
-        drawings.BoxOutline.Transparency = 1
-        
-        drawings.Box.Thickness = 1
-        drawings.Box.Color = Color3.fromRGB(255, 255, 255)
-        drawings.Box.Filled = false
-        drawings.Box.Transparency = 1
-        
-        -- Name settings
-        drawings.Name.Size = 13
-        drawings.Name.Center = true
-        drawings.Name.Outline = true
-        drawings.Name.Color = Color3.fromRGB(255, 255, 255)
-        drawings.Name.Font = 2
+        -- Text settings
+        for _, drawing in pairs({drawings.Name, drawings.Distance}) do
+            drawing.Size = config.esp.textSize
+            drawing.Center = true
+            drawing.Outline = config.esp.textOutline
+            drawing.Color = config.esp.textColor
+            drawing.Font = 2
+            drawing.Visible = false
+        end
         
         -- Health bar settings
-        drawings.HealthBarOutline.Thickness = 3
-        drawings.HealthBarOutline.Filled = false
-        drawings.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
-        drawings.HealthBarOutline.Transparency = 1
-        
-        drawings.HealthBar.Thickness = 1
-        drawings.HealthBar.Filled = true
-        drawings.HealthBar.Transparency = 1
+        for _, drawing in pairs({drawings.HealthBar, drawings.HealthBarOutline}) do
+            drawing.Thickness = drawing == drawings.HealthBarOutline and 3 or 1
+            drawing.Filled = drawing == drawings.HealthBar
+            drawing.Color = drawing == drawings.HealthBarOutline and Color3.new(0, 0, 0) or Color3.new(0, 1, 0)
+            drawing.Transparency = 1
+            drawing.Visible = false
+        end
         
         -- Tracer settings
         drawings.Tracer.Thickness = 1
-        drawings.Tracer.Color = Color3.fromRGB(255, 255, 255)
+        drawings.Tracer.Color = config.esp.tracerColor
         drawings.Tracer.Transparency = 1
+        drawings.Tracer.Visible = false
+        
+        -- Skeleton settings
+        for _, line in pairs(drawings.Skeleton) do
+            line.Thickness = 1
+            line.Color = Color3.new(1, 1, 1)
+            line.Transparency = 1
+            line.Visible = false
+        end
         
         ESP.Drawings[player] = drawings
     end
@@ -684,10 +772,31 @@ local function startScript()
                 local character = player.Character
                 local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
                 local humanoid = character and character:FindFirstChild("Humanoid")
+                local head = character and character:FindFirstChild("Head")
                 
-                if not character or not humanoidRootPart or not humanoid or humanoid.Health <= 0 then
+                if not character or not humanoidRootPart or not humanoid or not head or humanoid.Health <= 0 then
                     for _, drawing in pairs(drawings) do
-                        drawing.Visible = false
+                        if type(drawing) == "table" then
+                            for _, line in pairs(drawing) do
+                                line.Visible = false
+                            end
+                        else
+                            drawing.Visible = false
+                        end
+                    end
+                    return
+                end
+                
+                local distance = (Camera.CFrame.Position - humanoidRootPart.Position).Magnitude
+                if distance > config.esp.maxDistance then
+                    for _, drawing in pairs(drawings) do
+                        if type(drawing) == "table" then
+                            for _, line in pairs(drawing) do
+                                line.Visible = false
+                            end
+                        else
+                            drawing.Visible = false
+                        end
                     end
                     return
                 end
@@ -695,7 +804,13 @@ local function startScript()
                 local vector, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
                 if not onScreen then
                     for _, drawing in pairs(drawings) do
-                        drawing.Visible = false
+                        if type(drawing) == "table" then
+                            for _, line in pairs(drawing) do
+                                line.Visible = false
+                            end
+                        else
+                            drawing.Visible = false
+                        end
                     end
                     return
                 end
@@ -706,62 +821,137 @@ local function startScript()
                 local height = math.abs(topPosition.Y - bottomPosition.Y)
                 local width = height * 0.6
                 
-                if config.esp.enabled then
-                    -- Update box
-                    if config.esp.boxes then
-                        drawings.BoxOutline.Visible = true
-                        drawings.Box.Visible = true
-                        
-                        drawings.BoxOutline.Size = Vector2.new(width, height)
-                        drawings.BoxOutline.Position = Vector2.new(vector.X - width / 2, vector.Y - height / 2)
-                        
-                        drawings.Box.Size = Vector2.new(width, height)
-                        drawings.Box.Position = Vector2.new(vector.X - width / 2, vector.Y - height / 2)
-                    else
-                        drawings.BoxOutline.Visible = false
-                        drawings.Box.Visible = false
+                -- Update box
+                if config.esp.boxes then
+                    drawings.BoxOutline.Visible = true
+                    drawings.Box.Visible = true
+                    
+                    drawings.BoxOutline.Size = Vector2.new(width, height)
+                    drawings.BoxOutline.Position = Vector2.new(vector.X - width / 2, vector.Y - height / 2)
+                    
+                    drawings.Box.Size = Vector2.new(width, height)
+                    drawings.Box.Position = Vector2.new(vector.X - width / 2, vector.Y - height / 2)
+                    drawings.Box.Color = config.esp.boxColor
+                else
+                    drawings.BoxOutline.Visible = false
+                    drawings.Box.Visible = false
+                end
+                
+                -- Update name
+                if config.esp.names then
+                    drawings.Name.Visible = true
+                    drawings.Name.Text = player.Name
+                    drawings.Name.Position = Vector2.new(vector.X, vector.Y - height / 2 - 15)
+                    drawings.Name.Size = config.esp.textSize
+                    drawings.Name.Color = config.esp.textColor
+                else
+                    drawings.Name.Visible = false
+                end
+                
+                -- Update distance
+                if config.esp.distance then
+                    drawings.Distance.Visible = true
+                    drawings.Distance.Text = string.format("[%d studs]", math.floor(distance))
+                    drawings.Distance.Position = Vector2.new(vector.X, vector.Y + height / 2 + 5)
+                    drawings.Distance.Size = config.esp.textSize
+                    drawings.Distance.Color = config.esp.textColor
+                else
+                    drawings.Distance.Visible = false
+                end
+                
+                -- Update health bar
+                if config.esp.health and humanoid then
+                    drawings.HealthBarOutline.Visible = true
+                    drawings.HealthBar.Visible = true
+                    
+                    local healthBarHeight = height
+                    local healthBarWidth = 4
+                    local healthPercentage = humanoid.Health / humanoid.MaxHealth
+                    
+                    drawings.HealthBarOutline.Size = Vector2.new(healthBarWidth, healthBarHeight)
+                    drawings.HealthBarOutline.Position = Vector2.new(vector.X - width / 2 - 7, vector.Y - height / 2)
+                    
+                    drawings.HealthBar.Size = Vector2.new(healthBarWidth, healthBarHeight * healthPercentage)
+                    drawings.HealthBar.Position = Vector2.new(vector.X - width / 2 - 7, vector.Y - height / 2 + healthBarHeight * (1 - healthPercentage))
+                    drawings.HealthBar.Color = Color3.fromRGB(255 * (1 - healthPercentage), 255 * healthPercentage, 0)
+                else
+                    drawings.HealthBarOutline.Visible = false
+                    drawings.HealthBar.Visible = false
+                end
+                
+                -- Update tracer
+                if config.esp.tracers then
+                    drawings.Tracer.Visible = true
+                    drawings.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    drawings.Tracer.To = Vector2.new(vector.X, vector.Y)
+                    drawings.Tracer.Color = config.esp.tracerColor
+                else
+                    drawings.Tracer.Visible = false
+                end
+                
+                -- Update skeleton
+                if config.esp.skeleton then
+                    local function worldToViewport(part)
+                        if not part then return nil end
+                        local pos = Camera:WorldToViewportPoint(part.Position)
+                        return Vector2.new(pos.X, pos.Y)
                     end
                     
-                    -- Update name
-                    if config.esp.names then
-                        drawings.Name.Visible = true
-                        drawings.Name.Text = player.Name
-                        drawings.Name.Position = Vector2.new(vector.X, vector.Y - height / 2 - 15)
+                    local head = worldToViewport(character:FindFirstChild("Head"))
+                    local torso = worldToViewport(character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
+                    local leftArm = worldToViewport(character:FindFirstChild("LeftUpperArm") or character:FindFirstChild("Left Arm"))
+                    local rightArm = worldToViewport(character:FindFirstChild("RightUpperArm") or character:FindFirstChild("Right Arm"))
+                    local leftLeg = worldToViewport(character:FindFirstChild("LeftUpperLeg") or character:FindFirstChild("Left Leg"))
+                    local rightLeg = worldToViewport(character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("Right Leg"))
+                    
+                    if head and torso then
+                        drawings.Skeleton.Head.From = head
+                        drawings.Skeleton.Head.To = torso
+                        drawings.Skeleton.Head.Visible = true
                     else
-                        drawings.Name.Visible = false
+                        drawings.Skeleton.Head.Visible = false
                     end
                     
-                    -- Update health bar
-                    if config.esp.health and humanoid then
-                        drawings.HealthBarOutline.Visible = true
-                        drawings.HealthBar.Visible = true
+                    if torso then
+                        if leftArm then
+                            drawings.Skeleton.LeftArm.From = torso
+                            drawings.Skeleton.LeftArm.To = leftArm
+                            drawings.Skeleton.LeftArm.Visible = true
+                        else
+                            drawings.Skeleton.LeftArm.Visible = false
+                        end
                         
-                        local healthBarHeight = height
-                        local healthBarWidth = 4
-                        local healthPercentage = humanoid.Health / humanoid.MaxHealth
+                        if rightArm then
+                            drawings.Skeleton.RightArm.From = torso
+                            drawings.Skeleton.RightArm.To = rightArm
+                            drawings.Skeleton.RightArm.Visible = true
+                        else
+                            drawings.Skeleton.RightArm.Visible = false
+                        end
                         
-                        drawings.HealthBarOutline.Size = Vector2.new(healthBarWidth, healthBarHeight)
-                        drawings.HealthBarOutline.Position = Vector2.new(vector.X - width / 2 - 7, vector.Y - height / 2)
+                        if leftLeg then
+                            drawings.Skeleton.LeftLeg.From = torso
+                            drawings.Skeleton.LeftLeg.To = leftLeg
+                            drawings.Skeleton.LeftLeg.Visible = true
+                        else
+                            drawings.Skeleton.LeftLeg.Visible = false
+                        end
                         
-                        drawings.HealthBar.Size = Vector2.new(healthBarWidth, healthBarHeight * healthPercentage)
-                        drawings.HealthBar.Position = Vector2.new(vector.X - width / 2 - 7, vector.Y - height / 2 + healthBarHeight * (1 - healthPercentage))
-                        drawings.HealthBar.Color = Color3.fromRGB(255 * (1 - healthPercentage), 255 * healthPercentage, 0)
+                        if rightLeg then
+                            drawings.Skeleton.RightLeg.From = torso
+                            drawings.Skeleton.RightLeg.To = rightLeg
+                            drawings.Skeleton.RightLeg.Visible = true
+                        else
+                            drawings.Skeleton.RightLeg.Visible = false
+                        end
                     else
-                        drawings.HealthBarOutline.Visible = false
-                        drawings.HealthBar.Visible = false
-                    end
-                    
-                    -- Update tracer
-                    if config.esp.tracers then
-                        drawings.Tracer.Visible = true
-                        drawings.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                        drawings.Tracer.To = Vector2.new(vector.X, vector.Y)
-                    else
-                        drawings.Tracer.Visible = false
+                        for _, line in pairs(drawings.Skeleton) do
+                            line.Visible = false
+                        end
                     end
                 else
-                    for _, drawing in pairs(drawings) do
-                        drawing.Visible = false
+                    for _, line in pairs(drawings.Skeleton) do
+                        line.Visible = false
                     end
                 end
             end)
@@ -769,6 +959,22 @@ local function startScript()
     end
     
     -- Aimbot Functions
+    local function isVisible(character, part)
+        if not config.aimbot.visibilityCheck then return true end
+        
+        local origin = Camera.CFrame.Position
+        local direction = (part.Position - origin).Unit
+        local ray = Ray.new(origin, direction * config.aimbot.maxDistance)
+        
+        local hit, position = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
+        return hit and hit:IsDescendantOf(character)
+    end
+    
+    local function isTeammate(player)
+        if not config.aimbot.teamCheck then return false end
+        return player.Team == LocalPlayer.Team
+    end
+    
     local function getClosestPlayerToCursor()
         if not config.aimbot.enabled or not config.aimbot.active then return nil end
         
@@ -777,22 +983,42 @@ local function startScript()
         local mousePosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
         
         for _, player in pairs(Players:GetPlayers()) do
-            if player == LocalPlayer then continue end
+            if player == LocalPlayer or isTeammate(player) then continue end
             
             local success, result = pcall(function()
                 local character = player.Character
                 local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
                 local humanoid = character and character:FindFirstChild("Humanoid")
-                local head = character and character:FindFirstChild(config.aimbot.targetPart)
+                local targetPart = character and character:FindFirstChild(config.aimbot.targetPart)
                 
-                if character and humanoidRootPart and humanoid and humanoid.Health > 0 and head then
-                    local vector, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if character and humanoidRootPart and humanoid and humanoid.Health > 0 and targetPart then
+                    -- Check distance
+                    local distance = (Camera.CFrame.Position - targetPart.Position).Magnitude
+                    if distance > config.aimbot.maxDistance then return end
+                    
+                    -- Check visibility
+                    if not isVisible(character, targetPart) then return end
+                    
+                    -- Check hit chance
+                    if math.random(1, 100) > config.aimbot.hitChance then return end
+                    
+                    local vector, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
                     if onScreen then
                         local distance = (Vector2.new(vector.X, vector.Y) - mousePosition).Magnitude
                         if distance <= config.aimbot.fov then
-                            if distance < shortestDistance then
-                                closestPlayer = player
-                                shortestDistance = distance
+                            if config.aimbot.targetPriority == "Distance" then
+                                if distance < shortestDistance then
+                                    closestPlayer = player
+                                    shortestDistance = distance
+                                end
+                            elseif config.aimbot.targetPriority == "Health" then
+                                if humanoid.Health < (closestPlayer and closestPlayer.Character.Humanoid.Health or math.huge) then
+                                    closestPlayer = player
+                                end
+                            elseif config.aimbot.targetPriority == "Random" then
+                                if math.random() > 0.5 then
+                                    closestPlayer = player
+                                end
                             end
                         end
                     end
@@ -807,24 +1033,64 @@ local function startScript()
         return closestPlayer
     end
     
+    local function applyRandomization(position)
+        if config.aimbot.randomization <= 0 then return position end
+        
+        local randomX = (math.random() - 0.5) * config.aimbot.randomization
+        local randomY = (math.random() - 0.5) * config.aimbot.randomization
+        local randomZ = (math.random() - 0.5) * config.aimbot.randomization
+        
+        return position + Vector3.new(randomX, randomY, randomZ)
+    end
+    
     local function aimAt(player)
         if not player then return end
         
         local success, error = pcall(function()
             local character = player.Character
-            local head = character and character:FindFirstChild(config.aimbot.targetPart)
-            if not head then return end
+            local targetPart = character and character:FindFirstChild(config.aimbot.targetPart)
+            if not targetPart then return end
             
-            local targetPos = head.Position
+            local targetPos = targetPart.Position
+            
+            -- Apply prediction
             if config.aimbot.prediction then
-                local velocity = head.Velocity
-                local distance = (head.Position - Camera.CFrame.Position).Magnitude
+                local velocity = targetPart.Velocity
+                local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
                 local bulletTime = distance / 1000
                 targetPos = targetPos + (velocity * bulletTime)
             end
             
+            -- Apply randomization
+            targetPos = applyRandomization(targetPos)
+            
+            -- Apply auto wall if enabled
+            if config.aimbot.autoWall then
+                local ray = Ray.new(Camera.CFrame.Position, (targetPos - Camera.CFrame.Position).Unit * config.aimbot.maxDistance)
+                local hit, position = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
+                if hit and not hit:IsDescendantOf(character) then return end
+            end
+            
+            -- Create target CFrame
             local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPos)
-            Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / config.aimbot.smoothness)
+            
+            -- Apply smoothing or silent aim
+            if config.aimbot.silentAim then
+                -- Implementation depends on the game's specific anti-cheat
+                -- This is a basic example that might need to be adapted
+                Camera.CFrame = targetCFrame
+            else
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 1 / config.aimbot.smoothness)
+            end
+            
+            -- Handle auto shoot
+            if config.aimbot.autoShoot then
+                -- Implementation depends on the game's specific shooting mechanism
+                -- This is a placeholder that needs to be adapted
+                mouse1press()
+                task.wait()
+                mouse1release()
+            end
         end)
         
         if not success then
