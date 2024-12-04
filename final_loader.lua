@@ -1,18 +1,31 @@
--- TOS Industries v1
--- Copyright (c) 2024 TOS Industries. All rights reserved.
-
 local function startScript()
-    -- Wait for game
     if not game:IsLoaded() then game.Loaded:Wait() end
     if game.PlaceId ~= 292439477 then return false end
     
-    -- Services
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
     local CoreGui = game:GetService("CoreGui")
+    local LocalPlayer = Players.LocalPlayer
+    local Camera = workspace.CurrentCamera
     
-    -- Custom UI Implementation
+    local fovCircle = Drawing.new("Circle")
+    fovCircle.Thickness = 1
+    fovCircle.NumSides = 100
+    fovCircle.Radius = 100
+    fovCircle.Filled = false
+    fovCircle.Visible = false
+    fovCircle.ZIndex = 999
+    fovCircle.Transparency = 1
+    fovCircle.Color = Color3.fromRGB(255, 255, 255)
+    
+    local snapLine = Drawing.new("Line")
+    snapLine.Thickness = 1
+    snapLine.Visible = false
+    snapLine.ZIndex = 999
+    snapLine.Transparency = 1
+    snapLine.Color = Color3.fromRGB(255, 0, 0)
+    
     local UI = {}
     
     function UI.new()
@@ -56,7 +69,6 @@ local function startScript()
         layout.Padding = UDim.new(0, 5)
         layout.Parent = container
         
-        -- Create sections
         local sections = {
             Main = UI.createSection("Main", container),
             Visuals = UI.createSection("Visuals", container),
@@ -197,10 +209,8 @@ local function startScript()
         return sliderFrame
     end
     
-    -- Create UI instance
     local gui = UI.new()
     
-    -- Components
     local ESP = {
         Enabled = false,
         BoxEnabled = false,
@@ -225,10 +235,24 @@ local function startScript()
         Smoothness = 1,
         FOV = 100,
         MaxDistance = 1000,
-        CurrentTarget = nil
+        CurrentTarget = nil,
+        SilentAim = false,
+        AutoShoot = false,
+        AutoWall = false,
+        PredictMovement = false,
+        RandomizationStrength = 0,
+        HitChance = 100,
+        UnlockOnDeath = true,
+        IgnoreTransparency = false,
+        TargetPriority = "Distance",
+        AimKey = Enum.KeyCode.E,
+        TriggerKey = Enum.KeyCode.X,
+        FOVVisible = true,
+        FOVColor = Color3.fromRGB(255, 255, 255),
+        SnapLines = false,
+        SnapLineColor = Color3.fromRGB(255, 0, 0)
     }
     
-    -- Add controls
     UI.createToggle("Enable All", gui.Sections.Main.Container, function(state)
         ESP.Enabled = state
         Aimbot.Enabled = state
@@ -275,21 +299,47 @@ local function startScript()
         Aimbot.FOV = value
     end)
     
-    -- Toggle UI visibility with Right Alt
+    UI.createToggle("Silent Aim", gui.Sections.Aimbot.Container, function(state)
+        Aimbot.SilentAim = state
+    end)
+    
+    UI.createToggle("Auto Shoot", gui.Sections.Aimbot.Container, function(state)
+        Aimbot.AutoShoot = state
+    end)
+    
+    UI.createToggle("Auto Wall", gui.Sections.Aimbot.Container, function(state)
+        Aimbot.AutoWall = state
+    end)
+    
+    UI.createToggle("Predict Movement", gui.Sections.Aimbot.Container, function(state)
+        Aimbot.PredictMovement = state
+    end)
+    
+    UI.createSlider("Hit Chance", gui.Sections.Aimbot.Container, 1, 100, 100, function(value)
+        Aimbot.HitChance = value
+    end)
+    
+    UI.createSlider("Randomization", gui.Sections.Aimbot.Container, 0, 100, 0, function(value)
+        Aimbot.RandomizationStrength = value
+    end)
+    
+    UI.createToggle("Show FOV", gui.Sections.Aimbot.Container, function(state)
+        Aimbot.FOVVisible = state
+    end)
+    
+    UI.createToggle("Show Snaplines", gui.Sections.Aimbot.Container, function(state)
+        Aimbot.SnapLines = state
+    end)
+    
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if not gameProcessed and input.KeyCode == Enum.KeyCode.RightAlt then
             gui.MainFrame.Visible = not gui.MainFrame.Visible
         end
     end)
     
-    -- Rest of the ESP and Aimbot functions...
-    // ... rest of existing code ...
+    return true
 end
 
 local success, result = pcall(startScript)
-if not success then
-    warn("Script failed to start:", result)
-    return false
-end
-
+if not success then return false end
 return result
