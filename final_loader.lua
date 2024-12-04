@@ -1,3 +1,6 @@
+-- Initial check for parallel lua flag
+if not game:IsLoaded() then game.Loaded:Wait() end
+
 -- Initial protection layer
 local function initSecureEnv()
     local env = getfenv(1)
@@ -58,6 +61,50 @@ local function setupHooks()
 end
 
 local function LoadTOSIndustries()
+    -- Get PF modules
+    local Modules = {}
+    for i,v in next, getgc(true) do
+        if typeof(v) == "table" then
+            if rawget(v, "send") and rawget(v, "getPing") then
+                Modules.NetworkClient = v
+            elseif rawget(v, "new") and rawget(v, "setColor") and rawget(v, "step") then
+                Modules.BulletObject = v
+            elseif rawget(v, "removeEntry") and rawget(v, "operateOnAllEntries") and rawget(v, "getEntry") then
+                Modules.ReplicationInterface = v
+            end
+        end
+    end
+
+    -- Hook PF's bullet system
+    local oldBulletObject_new = Modules.BulletObject.new
+    Modules.BulletObject.new = newcclosure(function(...)
+        local Args = {...}
+        if Args[1]["extra"] and AimAssist.Enabled then
+            local Target = GetClosestPlayer()
+            if Target then
+                Args[1]["velocity"] = (Target.Position - Args[1]["position"]).unit * Args[1]["extra"]["firearmObject"]:getWeaponStat("bulletspeed")
+            end
+        end
+        return oldBulletObject_new(table.unpack(Args))
+    end)
+
+    -- Hook network send
+    local oldNetwork_send = Modules.NetworkClient.send
+    Modules.NetworkClient.send = newcclosure(function(self, Name, ...)
+        local Args = {...}
+        if Name == "newbullets" and AimAssist.Enabled then
+            local UniqueId, BulletData, Time = ...
+            for i,v in next, BulletData["bullets"] do
+                local Target = GetClosestPlayer()
+                if Target then
+                    v[1] = (Target.Position - BulletData["firepos"]).unit
+                end
+            end
+            return oldNetwork_send(self, Name, UniqueId, BulletData, Time)
+        end
+        return oldNetwork_send(self, Name, ...)
+    end)
+
     -- PF-specific environment checks
     local gameData = game:GetService("ReplicatedStorage"):WaitForChild("GameData", 1)
     if not gameData then return false end
