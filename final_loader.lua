@@ -58,18 +58,29 @@ local function startScript()
         Active = false,
         TargetPart = "Head",
         FOV = 100,
-        Smoothness = 2
+        Smoothness = 2,
+        TeamCheck = false,
+        VisibilityCheck = false,
+        PredictMovement = true,
+        PredictionAmount = 0.165
     }
     
     -- UI System
     local UI = {}
-    local ui = nil  -- Will be initialized later
+    local ui = nil
     
     function UI.new()
         local screenGui = Instance.new("ScreenGui")
         screenGui.Name = "TOSIndustriesV1"
         screenGui.ResetOnSpawn = false
-        screenGui.Parent = CoreGui
+        
+        -- Handle Synapse X
+        if syn and syn.protect_gui then
+            syn.protect_gui(screenGui)
+            screenGui.Parent = game:GetService("CoreGui")
+        else
+            screenGui.Parent = game:GetService("CoreGui")
+        end
         
         local mainFrame = Instance.new("Frame")
         mainFrame.Name = "MainFrame"
@@ -443,10 +454,13 @@ local function startScript()
     function Aimbot:GetClosestPlayer()
         local maxDistance = self.FOV
         local target = nil
-        local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+        local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
         
         for _, player in pairs(Players:GetPlayers()) do
             if player == LocalPlayer then continue end
+            
+            -- Team Check
+            if self.TeamCheck and player.Team == LocalPlayer.Team then continue end
             
             local character = player.Character
             if not character then continue end
@@ -457,10 +471,17 @@ local function startScript()
             local part = character:FindFirstChild(self.TargetPart)
             if not part then continue end
             
+            -- Visibility Check
+            if self.VisibilityCheck then
+                local ray = Ray.new(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000)
+                local hit, _ = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
+                if not hit or not hit:IsDescendantOf(character) then continue end
+            end
+            
             local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
             if not onScreen then continue end
             
-            local distance = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+            local distance = (Vector2.new(pos.X, pos.Y) - screenCenter).Magnitude
             if distance < maxDistance then
                 maxDistance = distance
                 target = player
@@ -482,20 +503,41 @@ local function startScript()
         local part = character:FindFirstChild(self.TargetPart)
         if not part then return end
         
-        local pos = part.Position
-        local targetCF = CFrame.new(Camera.CFrame.Position, pos)
+        local targetPos = part.Position
+        
+        -- Movement Prediction
+        if self.PredictMovement then
+            local velocity = part.Velocity
+            local distance = (targetPos - Camera.CFrame.Position).Magnitude
+            targetPos = targetPos + (velocity * self.PredictionAmount)
+        end
+        
+        local targetCF = CFrame.new(Camera.CFrame.Position, targetPos)
         Camera.CFrame = Camera.CFrame:Lerp(targetCF, 1 / self.Smoothness)
     end
     
     -- Initialize UI
     ui = UI.new()
     
-    -- Create toggles
+    -- Combat Tab
     local aimbotToggle = UI.createToggle("Enable Aimbot", ui.Tabs.Combat.Container, function(state)
         Aimbot.Enabled = state
         fovCircle.Visible = state
     end)
     
+    local teamCheckToggle = UI.createToggle("Team Check", ui.Tabs.Combat.Container, function(state)
+        Aimbot.TeamCheck = state
+    end)
+    
+    local visibilityCheckToggle = UI.createToggle("Visibility Check", ui.Tabs.Combat.Container, function(state)
+        Aimbot.VisibilityCheck = state
+    end)
+    
+    local predictionToggle = UI.createToggle("Movement Prediction", ui.Tabs.Combat.Container, function(state)
+        Aimbot.PredictMovement = state
+    end)
+    
+    -- Visuals Tab
     local espToggle = UI.createToggle("Enable ESP", ui.Tabs.Visuals.Container, function(state)
         ESP.Enabled = state
     end)
@@ -540,28 +582,78 @@ local function startScript()
         
         if input.KeyCode == Enum.KeyCode.E then
             Aimbot.Active = not Aimbot.Active
+            
+            -- Visual feedback
+            if Aimbot.Active then
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "Aimbot",
+                    Text = "Activated",
+                    Duration = 1
+                })
+            else
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "Aimbot",
+                    Text = "Deactivated",
+                    Duration = 1
+                })
+            end
         elseif input.KeyCode == Enum.KeyCode.RightShift then
             ui.MainFrame.Visible = not ui.MainFrame.Visible
         end
     end)
     
+    -- Set initial states
+    aimbotToggle.SetState(false)
+    teamCheckToggle.SetState(false)
+    visibilityCheckToggle.SetState(false)
+    predictionToggle.SetState(true)
+    espToggle.SetState(false)
+    boxesToggle.SetState(true)
+    namesToggle.SetState(true)
+    healthToggle.SetState(true)
+    distanceToggle.SetState(true)
+    tracersToggle.SetState(true)
+    
+    -- Make sure UI is visible initially
+    ui.MainFrame.Visible = true
+    
     -- Main Loop
-    RunService:BindToRenderStep("ESP", Enum.RenderPriority.Camera.Value + 1, function()
+    RunService:BindToRenderStep("ESP_Aimbot", Enum.RenderPriority.Camera.Value + 1, function()
         ESP:Update()
         Aimbot:Update()
         
+        -- Update FOV Circle
         if Aimbot.Enabled then
-            fovCircle.Position = Vector2.new(Mouse.X, Mouse.Y)
+            fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
             fovCircle.Radius = Aimbot.FOV
             fovCircle.Visible = true
+            
+            -- Update snapline if we have a target
+            local target = Aimbot:GetClosestPlayer()
+            if target and target.Character then
+                local part = target.Character:FindFirstChild(Aimbot.TargetPart)
+                if part then
+                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                        snapLine.To = Vector2.new(pos.X, pos.Y)
+                        snapLine.Visible = true
+                    else
+                        snapLine.Visible = false
+                    end
+                end
+            else
+                snapLine.Visible = false
+            end
         else
             fovCircle.Visible = false
+            snapLine.Visible = false
         end
     end)
     
     -- Cleanup
     local function cleanup()
-        RunService:UnbindFromRenderStep("ESP")
+        RunService:UnbindFromRenderStep("ESP_Aimbot")
         
         for _, connection in pairs(ESP.Connections) do
             connection:Disconnect()
