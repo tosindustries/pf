@@ -48,6 +48,7 @@ local function startScript()
         Health = true,
         Distance = true,
         Tracers = true,
+        TeamCheck = true,
         Players = {},
         Connections = {}
     }
@@ -56,13 +57,16 @@ local function startScript()
     local Aimbot = {
         Enabled = false,
         Active = false,
+        Silent = false,
         TargetPart = "Head",
         FOV = 100,
         Smoothness = 2,
-        TeamCheck = false,
+        TeamCheck = true,
         VisibilityCheck = false,
         PredictMovement = true,
-        PredictionAmount = 0.165
+        PredictionAmount = 0.165,
+        HitChance = 100,
+        AutoShoot = false
     }
     
     -- UI System
@@ -144,7 +148,7 @@ local function startScript()
         closeCorner.Parent = closeButton
         
         closeButton.MouseButton1Click:Connect(function()
-            screenGui:Destroy()
+            mainFrame.Visible = false
         end)
         
         local menuButtons = Instance.new("Frame")
@@ -536,36 +540,54 @@ local function startScript()
         }
         
         -- Box settings
+        drawings.BoxOutline.Visible = false
         drawings.BoxOutline.Color = Color3.fromRGB(0, 0, 0)
         drawings.BoxOutline.Thickness = 3
         drawings.BoxOutline.Filled = false
+        drawings.BoxOutline.Transparency = 1
+        
+        drawings.Box.Visible = false
         drawings.Box.Color = Color3.fromRGB(255, 255, 255)
         drawings.Box.Thickness = 1
         drawings.Box.Filled = false
+        drawings.Box.Transparency = 1
         
         -- Name settings
+        drawings.Name.Visible = false
         drawings.Name.Center = true
         drawings.Name.Outline = true
         drawings.Name.Font = 2
         drawings.Name.Size = 13
+        drawings.Name.Color = Color3.fromRGB(255, 255, 255)
+        drawings.Name.Transparency = 1
         
         -- Distance settings
+        drawings.Distance.Visible = false
         drawings.Distance.Center = true
         drawings.Distance.Outline = true
         drawings.Distance.Font = 2
         drawings.Distance.Size = 13
+        drawings.Distance.Color = Color3.fromRGB(255, 255, 255)
+        drawings.Distance.Transparency = 1
         
         -- Health bar settings
+        drawings.HealthBarOutline.Visible = false
         drawings.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
         drawings.HealthBarOutline.Filled = true
         drawings.HealthBarOutline.Thickness = 1
+        drawings.HealthBarOutline.Transparency = 1
+        
+        drawings.HealthBar.Visible = false
         drawings.HealthBar.Color = Color3.fromRGB(0, 255, 0)
         drawings.HealthBar.Filled = true
         drawings.HealthBar.Thickness = 1
+        drawings.HealthBar.Transparency = 1
         
         -- Tracer settings
+        drawings.Tracer.Visible = false
         drawings.Tracer.Color = Color3.fromRGB(255, 255, 255)
         drawings.Tracer.Thickness = 1
+        drawings.Tracer.Transparency = 1
         
         self.Players[player] = drawings
     end
@@ -576,6 +598,7 @@ local function startScript()
         
         for _, drawing in pairs(drawings) do
             if drawing then
+                drawing.Visible = false
                 drawing:Remove()
             end
         end
@@ -587,6 +610,17 @@ local function startScript()
         if not self.Enabled then return end
         if player == LocalPlayer then return end
         
+        -- Team Check
+        if self.TeamCheck and player.Team == LocalPlayer.Team then
+            local drawings = self.Players[player]
+            if drawings then
+                for _, drawing in pairs(drawings) do
+                    drawing.Visible = false
+                end
+            end
+            return
+        end
+        
         local drawings = self.Players[player]
         if not drawings then
             self:CreatePlayer(player)
@@ -594,17 +628,17 @@ local function startScript()
         end
         
         local character = player.Character
-        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
         local humanoid = character and character:FindFirstChild("Humanoid")
         
-        if not character or not rootPart or not humanoid then
+        if not character or not humanoidRootPart or not humanoid or humanoid.Health <= 0 then
             for _, drawing in pairs(drawings) do
                 drawing.Visible = false
             end
             return
         end
         
-        local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        local pos, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
         if not onScreen then
             for _, drawing in pairs(drawings) do
                 drawing.Visible = false
@@ -612,15 +646,17 @@ local function startScript()
             return
         end
         
-        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+        local distance = (humanoidRootPart.Position - Camera.CFrame.Position).Magnitude
         local size = math.clamp(1 / (distance * 0.2), 0.1, 1)
-        local boxSize = Vector2.new(1500 * size, 1900 * size)
+        local boxSize = Vector2.new(1000 * size, 1500 * size)
         
+        -- Update box
         if self.Boxes then
             drawings.BoxOutline.Visible = true
-            drawings.Box.Visible = true
             drawings.BoxOutline.Size = boxSize
             drawings.BoxOutline.Position = Vector2.new(pos.X - boxSize.X / 2, pos.Y - boxSize.Y / 2)
+            
+            drawings.Box.Visible = true
             drawings.Box.Size = boxSize
             drawings.Box.Position = Vector2.new(pos.X - boxSize.X / 2, pos.Y - boxSize.Y / 2)
         else
@@ -628,6 +664,7 @@ local function startScript()
             drawings.Box.Visible = false
         end
         
+        -- Update name
         if self.Names then
             drawings.Name.Visible = true
             drawings.Name.Text = player.Name
@@ -636,32 +673,35 @@ local function startScript()
             drawings.Name.Visible = false
         end
         
+        -- Update distance
         if self.Distance then
             drawings.Distance.Visible = true
-            drawings.Distance.Text = math.floor(distance) .. " studs"
+            drawings.Distance.Text = string.format("[%d]", math.floor(distance))
             drawings.Distance.Position = Vector2.new(pos.X, pos.Y + boxSize.Y / 2 + 5)
         else
             drawings.Distance.Visible = false
         end
         
+        -- Update health bar
         if self.Health then
+            local healthPercent = humanoid.Health / humanoid.MaxHealth
+            local barHeight = boxSize.Y
+            local barPosition = Vector2.new(pos.X - boxSize.X / 2 - 7, pos.Y - boxSize.Y / 2)
+            
             drawings.HealthBarOutline.Visible = true
+            drawings.HealthBarOutline.Size = Vector2.new(4, barHeight)
+            drawings.HealthBarOutline.Position = barPosition
+            
             drawings.HealthBar.Visible = true
-            
-            local healthBarSize = Vector2.new(3, boxSize.Y)
-            local healthBarPos = Vector2.new(pos.X - boxSize.X / 2 - 6, pos.Y - boxSize.Y / 2)
-            local healthPercentage = humanoid.Health / humanoid.MaxHealth
-            
-            drawings.HealthBarOutline.Size = healthBarSize
-            drawings.HealthBarOutline.Position = healthBarPos
-            drawings.HealthBar.Size = Vector2.new(3, healthBarSize.Y * healthPercentage)
-            drawings.HealthBar.Position = Vector2.new(healthBarPos.X, healthBarPos.Y + healthBarSize.Y * (1 - healthPercentage))
-            drawings.HealthBar.Color = Color3.fromRGB(255 - 255 * healthPercentage, 255 * healthPercentage, 0)
+            drawings.HealthBar.Size = Vector2.new(2, barHeight * healthPercent)
+            drawings.HealthBar.Position = Vector2.new(barPosition.X + 1, barPosition.Y + barHeight * (1 - healthPercent))
+            drawings.HealthBar.Color = Color3.fromRGB(255 - 255 * healthPercent, 255 * healthPercent, 0)
         else
             drawings.HealthBarOutline.Visible = false
             drawings.HealthBar.Visible = false
         end
         
+        -- Update tracer
         if self.Tracers then
             drawings.Tracer.Visible = true
             drawings.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
@@ -672,89 +712,58 @@ local function startScript()
     end
     
     function ESP:Update()
-        for player in pairs(self.Players) do
-            if not Players:FindFirstChild(player.Name) then
-                self:RemovePlayer(player)
-            end
-        end
-        
         for _, player in pairs(Players:GetPlayers()) do
-            self:UpdatePlayer(player)
-        end
-    end
-    
-    function Aimbot:GetClosestPlayer()
-        local maxDistance = self.FOV
-        local target = nil
-        local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        
-        for _, player in pairs(Players:GetPlayers()) do
-            if player == LocalPlayer then continue end
-            
-            -- Team Check
-            if self.TeamCheck and player.Team == LocalPlayer.Team then continue end
-            
-            local character = player.Character
-            if not character then continue end
-            
-            local humanoid = character:FindFirstChild("Humanoid")
-            if not humanoid or humanoid.Health <= 0 then continue end
-            
-            local part = character:FindFirstChild(self.TargetPart)
-            if not part then continue end
-            
-            -- Visibility Check
-            if self.VisibilityCheck then
-                local ray = Ray.new(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000)
-                local hit, _ = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, Camera})
-                if not hit or not hit:IsDescendantOf(character) then continue end
-            end
-            
-            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-            if not onScreen then continue end
-            
-            local distance = (Vector2.new(pos.X, pos.Y) - screenCenter).Magnitude
-            if distance < maxDistance then
-                maxDistance = distance
-                target = player
+            if player ~= LocalPlayer then
+                self:UpdatePlayer(player)
             end
         end
-        
-        return target
     end
     
-    function Aimbot:Update()
-        if not self.Enabled or not self.Active then return end
-        
-        local target = self:GetClosestPlayer()
-        if not target then return end
-        
-        local character = target.Character
-        if not character then return end
-        
-        local part = character:FindFirstChild(self.TargetPart)
-        if not part then return end
-        
-        local targetPos = part.Position
-        
-        -- Movement Prediction
-        if self.PredictMovement then
-            local velocity = part.Velocity
-            local distance = (targetPos - Camera.CFrame.Position).Magnitude
-            targetPos = targetPos + (velocity * self.PredictionAmount)
+    -- Initialize ESP
+    ESP.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
+        ESP:CreatePlayer(player)
+    end)
+    
+    ESP.Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
+        ESP:RemovePlayer(player)
+    end)
+    
+    -- Initialize existing players
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            ESP:CreatePlayer(player)
         end
-        
-        local targetCF = CFrame.new(Camera.CFrame.Position, targetPos)
-        Camera.CFrame = Camera.CFrame:Lerp(targetCF, 1 / self.Smoothness)
     end
     
-    -- Initialize UI
-    ui = UI.new()
+    -- Update ESP in RenderStepped
+    RunService:BindToRenderStep("ESP", Enum.RenderPriority.Camera.Value + 1, function()
+        ESP:Update()
+    end)
     
     -- Combat Tab
     local aimbotToggle = UI.createToggle("Enable Aimbot", ui.Pages.Aimbot, function(state)
         Aimbot.Enabled = state
+        if not state then
+            Aimbot.Active = false
+            Aimbot.Silent = false
+        end
         fovCircle.Visible = state
+    end)
+    
+    local silentAimToggle = UI.createToggle("Silent Aim", ui.Pages.Aimbot, function(state)
+        Aimbot.Silent = state
+        if state then
+            -- Disable regular aimbot when silent aim is enabled
+            Aimbot.Active = false
+        end
+    end)
+    
+    local autoShootToggle = UI.createToggle("Auto Shoot", ui.Pages.Aimbot, function(state)
+        Aimbot.AutoShoot = state
+    end)
+    
+    local hitChanceSlider = UI.createSlider("Hit Chance", ui.Pages.Aimbot, 1, 100, 100, function(value)
+        Aimbot.HitChance = value
     end)
     
     local fovSlider = UI.createSlider("FOV Size", ui.Pages.Aimbot, 10, 800, 100, function(value)
@@ -771,7 +780,7 @@ local function startScript()
     end)
     
     local teamCheckToggle = UI.createToggle("Team Check", ui.Pages.Aimbot, function(state)
-        Aimbot.TeamCheck = state
+        ESP.TeamCheck = state
     end)
     
     local visibilityCheckToggle = UI.createToggle("Visibility Check", ui.Pages.Aimbot, function(state)
@@ -807,40 +816,21 @@ local function startScript()
         ESP.Tracers = state
     end)
     
-    -- Initialize existing players
-    for _, player in pairs(Players:GetPlayers()) do
-        ESP:CreatePlayer(player)
-    end
-    
-    -- Player Connections
-    ESP.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
-        ESP:CreatePlayer(player)
-    end)
-    
-    ESP.Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
-        ESP:RemovePlayer(player)
-    end)
-    
     -- Input Connections
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
         if input.KeyCode == Enum.KeyCode.E then
-            Aimbot.Active = not Aimbot.Active
-            
-            -- Visual feedback
-            if Aimbot.Active then
-                game:GetService("StarterGui"):SetCore("SendNotification", {
-                    Title = "Aimbot",
-                    Text = "Activated",
-                    Duration = 1
-                })
-            else
-                game:GetService("StarterGui"):SetCore("SendNotification", {
-                    Title = "Aimbot",
-                    Text = "Deactivated",
-                    Duration = 1
-                })
+            if Aimbot.Enabled then
+                if not Aimbot.Silent then
+                    Aimbot.Active = not Aimbot.Active
+                    -- Visual feedback
+                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                        Title = "Aimbot",
+                        Text = Aimbot.Active and "Activated" or "Deactivated",
+                        Duration = 1
+                    })
+                end
             end
         elseif input.KeyCode == Enum.KeyCode.RightShift then
             ui.MainFrame.Visible = not ui.MainFrame.Visible
