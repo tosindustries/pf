@@ -269,8 +269,16 @@ local function startScript()
         Camera.CFrame = Camera.CFrame:Lerp(targetCF, 1 / self.Smoothness)
     end
     
-    -- UI System
-    // ... rest of UI code ...
+    -- Handle keybinds
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if input.KeyCode == Enum.KeyCode.E then
+            Aimbot.Active = not Aimbot.Active
+        elseif input.KeyCode == Enum.KeyCode.RightShift then
+            -- Toggle UI visibility here when we add it
+        end
+    end)
     
     -- Main Loop
     RunService:BindToRenderStep("ESP", Enum.RenderPriority.Camera.Value + 1, function()
@@ -286,6 +294,11 @@ local function startScript()
         end
     end)
     
+    -- Initialize existing players
+    for _, player in pairs(Players:GetPlayers()) do
+        ESP:CreatePlayer(player)
+    end
+    
     -- Player Connections
     ESP.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
         ESP:CreatePlayer(player)
@@ -294,11 +307,6 @@ local function startScript()
     ESP.Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
         ESP:RemovePlayer(player)
     end)
-    
-    -- Initialize existing players
-    for _, player in pairs(Players:GetPlayers()) do
-        ESP:CreatePlayer(player)
-    end
     
     -- Cleanup
     local function cleanup()
@@ -319,6 +327,266 @@ local function startScript()
     game:GetService("CoreGui").ChildRemoved:Connect(function(child)
         if child == ui.ScreenGui then
             cleanup()
+        end
+    end)
+    
+    -- UI System
+    local UI = {}
+    
+    function UI.new()
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "TOSIndustriesV1"
+        screenGui.ResetOnSpawn = false
+        screenGui.Parent = CoreGui
+        
+        local mainFrame = Instance.new("Frame")
+        mainFrame.Name = "MainFrame"
+        mainFrame.Size = UDim2.new(0, 500, 0, 350)
+        mainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
+        mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        mainFrame.BorderSizePixel = 0
+        mainFrame.ClipsDescendants = true
+        mainFrame.Parent = screenGui
+        
+        local topBar = Instance.new("Frame")
+        topBar.Name = "TopBar"
+        topBar.Size = UDim2.new(1, 0, 0, 35)
+        topBar.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        topBar.BorderSizePixel = 0
+        topBar.Parent = mainFrame
+        
+        local title = Instance.new("TextLabel")
+        title.Name = "Title"
+        title.Size = UDim2.new(1, -10, 1, 0)
+        title.Position = UDim2.new(0, 10, 0, 0)
+        title.BackgroundTransparency = 1
+        title.Text = "TOS Industries v1"
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.TextSize = 18
+        title.Font = Enum.Font.GothamBold
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Parent = topBar
+        
+        local tabButtons = Instance.new("Frame")
+        tabButtons.Name = "TabButtons"
+        tabButtons.Size = UDim2.new(0, 120, 1, -35)
+        tabButtons.Position = UDim2.new(0, 0, 0, 35)
+        tabButtons.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        tabButtons.BorderSizePixel = 0
+        tabButtons.Parent = mainFrame
+        
+        local tabContainer = Instance.new("Frame")
+        tabContainer.Name = "TabContainer"
+        tabContainer.Size = UDim2.new(1, -120, 1, -35)
+        tabContainer.Position = UDim2.new(0, 120, 0, 35)
+        tabContainer.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+        tabContainer.BorderSizePixel = 0
+        tabContainer.Parent = mainFrame
+        
+        local function createTab(name)
+            local button = Instance.new("TextButton")
+            button.Name = name .. "Button"
+            button.Size = UDim2.new(1, 0, 0, 35)
+            button.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+            button.BorderSizePixel = 0
+            button.Text = name
+            button.TextColor3 = Color3.fromRGB(200, 200, 200)
+            button.TextSize = 14
+            button.Font = Enum.Font.GothamSemibold
+            button.Parent = tabButtons
+            
+            local container = Instance.new("ScrollingFrame")
+            container.Name = name .. "Container"
+            container.Size = UDim2.new(1, -20, 1, -20)
+            container.Position = UDim2.new(0, 10, 0, 10)
+            container.BackgroundTransparency = 1
+            container.BorderSizePixel = 0
+            container.ScrollBarThickness = 2
+            container.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
+            container.Visible = false
+            container.Parent = tabContainer
+            
+            local layout = Instance.new("UIListLayout")
+            layout.Padding = UDim.new(0, 8)
+            layout.Parent = container
+            
+            return {
+                Button = button,
+                Container = container
+            }
+        end
+        
+        local tabs = {
+            Combat = createTab("Combat"),
+            Visuals = createTab("Visuals"),
+            Settings = createTab("Settings")
+        }
+        
+        local currentTab = nil
+        
+        local function selectTab(tab)
+            if currentTab then
+                currentTab.Button.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                currentTab.Button.TextColor3 = Color3.fromRGB(200, 200, 200)
+                currentTab.Container.Visible = false
+            end
+            
+            tab.Button.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+            tab.Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            tab.Container.Visible = true
+            currentTab = tab
+        end
+        
+        for _, tab in pairs(tabs) do
+            tab.Button.MouseButton1Click:Connect(function()
+                selectTab(tab)
+            end)
+        end
+        
+        selectTab(tabs.Combat)
+        
+        -- Make the window draggable
+        local dragging = false
+        local dragStart = nil
+        local startPos = nil
+        
+        topBar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = mainFrame.Position
+            end
+        end)
+        
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                mainFrame.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+        
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        return {
+            ScreenGui = screenGui,
+            MainFrame = mainFrame,
+            Tabs = tabs
+        }
+    end
+    
+    function UI.createToggle(text, parent, callback)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 0, 30)
+        container.BackgroundTransparency = 1
+        container.Parent = parent
+        
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 1, 0)
+        button.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        button.BorderSizePixel = 0
+        button.Text = ""
+        button.Parent = container
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -50, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamSemibold
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = button
+        
+        local toggle = Instance.new("Frame")
+        toggle.Size = UDim2.new(0, 40, 0, 20)
+        toggle.Position = UDim2.new(1, -45, 0.5, -10)
+        toggle.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        toggle.BorderSizePixel = 0
+        toggle.Parent = button
+        
+        local indicator = Instance.new("Frame")
+        indicator.Size = UDim2.new(0, 16, 0, 16)
+        indicator.Position = UDim2.new(0, 2, 0.5, -8)
+        indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        indicator.BorderSizePixel = 0
+        indicator.Parent = toggle
+        
+        local state = false
+        
+        local function updateToggle()
+            state = not state
+            local pos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            local color = state and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(255, 255, 255)
+            
+            indicator.Position = pos
+            indicator.BackgroundColor3 = color
+            toggle.BackgroundColor3 = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(30, 30, 45)
+            
+            callback(state)
+        end
+        
+        button.MouseButton1Click:Connect(updateToggle)
+        
+        return {
+            Frame = container,
+            SetState = function(newState)
+                if state ~= newState then
+                    updateToggle()
+                end
+            end
+        }
+    end
+    
+    -- Create UI
+    local ui = UI.new()
+    
+    -- Combat Tab
+    local aimbotToggle = UI.createToggle("Enable Aimbot", ui.Tabs.Combat.Container, function(state)
+        Aimbot.Enabled = state
+        fovCircle.Visible = state
+    end)
+    
+    -- Visuals Tab
+    local espToggle = UI.createToggle("Enable ESP", ui.Tabs.Visuals.Container, function(state)
+        ESP.Enabled = state
+    end)
+    
+    local boxesToggle = UI.createToggle("Show Boxes", ui.Tabs.Visuals.Container, function(state)
+        ESP.Boxes = state
+    end)
+    
+    local namesToggle = UI.createToggle("Show Names", ui.Tabs.Visuals.Container, function(state)
+        ESP.Names = state
+    end)
+    
+    local healthToggle = UI.createToggle("Show Health", ui.Tabs.Visuals.Container, function(state)
+        ESP.Health = state
+    end)
+    
+    local distanceToggle = UI.createToggle("Show Distance", ui.Tabs.Visuals.Container, function(state)
+        ESP.Distance = state
+    end)
+    
+    local tracersToggle = UI.createToggle("Show Tracers", ui.Tabs.Visuals.Container, function(state)
+        ESP.Tracers = state
+    end)
+    
+    -- Update UI visibility with RightShift
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            ui.MainFrame.Visible = not ui.MainFrame.Visible
         end
     end)
     
