@@ -1,4 +1,10 @@
--- Initialize services at the start
+-- Initial setup
+repeat task.wait() until game:IsLoaded() and game.GameId ~= 0
+
+if not newcclosure and not getgc then
+    game:GetService("Players").LocalPlayer:Kick("Executor Not Supported!")
+end
+
 local Services = {
     Players = game:GetService("Players"),
     RunService = game:GetService("RunService"),
@@ -8,29 +14,7 @@ local Services = {
     ReplicatedStorage = game:GetService("ReplicatedStorage")
 }
 
-if not game:IsLoaded() then game.Loaded:Wait() end
-
--- Check if we're in PF
-local isPF = false
-pcall(function()
-    local gameData = Services.ReplicatedStorage:WaitForChild("GameData", 1)
-    if gameData then isPF = true end
-end)
-
--- Setup proper environment
-local oldHook
-oldHook = hookfunction(game.IsLoaded, newcclosure(function(...)
-    return true
-end))
-
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    if method == "Kick" or method == "kick" then return wait(9e9) end
-    return oldNamecall(self, ...)
-end))
-
--- Get PF modules
+-- Get PF modules first
 local Modules = {}
 for i,v in next, getgc(true) do
     if typeof(v) == "table" then
@@ -44,7 +28,44 @@ for i,v in next, getgc(true) do
     end
 end
 
--- Initialize global state
+-- Setup environment
+xpcall(function()
+    local oldBulletObject_new = Modules.BulletObject.new
+    Modules.BulletObject.new = newcclosure(function(...)
+        local Args = {...}
+        if Args[1]["extra"] and AimAssist and AimAssist.Enabled then
+            local Target = GetClosestPlayer()
+            if Target then
+                Args[1]["velocity"] = (Target.Position - Args[1]["position"]).unit * Args[1]["extra"]["firearmObject"]:getWeaponStat("bulletspeed")
+            end
+        end
+        return oldBulletObject_new(table.unpack(Args))
+    end)
+end, function()
+    LocalPlayer:Kick('Check if you have "FFlagDebugRunParallelLuaOnMainThread" set to "True" or modules not found.')
+end)
+
+-- Hook network send
+xpcall(function()
+    local oldNetwork_send = Modules.NetworkClient.send
+    Modules.NetworkClient.send = newcclosure(function(self, Name, ...)
+        local Args = {...}
+        if Name == "newbullets" and AimAssist and AimAssist.Enabled then
+            local UniqueId, BulletData, Time = ...
+            for i,v in next, BulletData["bullets"] do
+                local Target = GetClosestPlayer()
+                if Target then
+                    v[1] = (Target.Position - BulletData["firepos"]).unit
+                end
+            end
+            return oldNetwork_send(self, Name, UniqueId, BulletData, Time)
+        end
+        return oldNetwork_send(self, Name, ...)
+    end)
+end, function()
+    warn("Network hook failed")
+end)
+
 local LocalPlayer = Services.Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
@@ -59,19 +80,22 @@ local State = {
     MouseVelocity = Vector2.new()
 }
 
--- Initialize ESP objects
 local ESPObjects = {}
 
 -- Initialize configurations
 getgenv().AimAssist = setmetatable({
     _SEC = "TOS_"..string.char(95,73,110,100,117,115,116,114,105,101,115),
     Enabled = false,
-    Mode = "Realistic",
-    Smoothness = {Min = 0.15, Max = 0.32},
+    Mode = "Silent",
     FOV = 200,
-    TargetPart = "UpperTorso",
-    MaxDistance = 120,
-    TeamCheck = true
+    TargetPart = "Head",
+    MaxDistance = 1000,
+    TeamCheck = true,
+    VisibilityCheck = true,
+    SmoothAim = {
+        Enabled = true,
+        Smoothness = 0.25
+    }
 }, {
     __newindex = function(t, k, v)
         if k:match("hack") or k:match("cheat") then return end
@@ -230,14 +254,19 @@ local function GetClosestPlayer()
             local humanoid = character:FindFirstChild("Humanoid")
             if not humanoid or humanoid.Health <= 0 then continue end
             
-            local part = character:FindFirstChild(AimAssist.TargetPart) or 
-                        character:FindFirstChild("HumanoidRootPart")
+            local part = character:FindFirstChild(AimAssist.TargetPart)
             if not part then continue end
             
             local pos, onScreen, distance = GetPartPosition(part)
             if not onScreen or distance > AimAssist.MaxDistance then continue end
             
             if AimAssist.TeamCheck and player.Team == LocalPlayer.Team then continue end
+            
+            if AimAssist.VisibilityCheck then
+                local ray = Ray.new(Camera.CFrame.Position, (part.Position - Camera.CFrame.Position).Unit * 1000)
+                local hit = workspace:FindPartOnRayWithIgnoreList(ray, {Camera, LocalPlayer.Character, character})
+                if hit then continue end
+            end
             
             local mouseDistance = (pos - MousePos).Magnitude
             if mouseDistance > AimAssist.FOV then continue end
@@ -258,35 +287,11 @@ local function GetClosestPlayer()
     return ClosestPlayer
 end
 
-local function UpdateAim(target)
-    if not target then return end
-    
-    local currentTime = tick()
-    local isNewTarget = target.Player ~= State.LastTarget
-    
-    if isNewTarget then
-        State.LastTarget = target.Player
-        State.LastAimTime = currentTime
-        State.CurrentAcceleration = 0
-    end
-    
-    local mousePos = Services.UserInputService:GetMouseLocation()
-    local aimDelta = (target.Position - mousePos)
-    local smoothing = AimAssist.Smoothness.Min + 
-        (AimAssist.Smoothness.Max - AimAssist.Smoothness.Min) * 
-        (target.Distance / AimAssist.MaxDistance)
-    
-    mousemoverel(
-        aimDelta.X * smoothing,
-        aimDelta.Y * smoothing
-    )
-end
-
 -- GUI Implementation
 local function CreateGui()
     local gui = Instance.new("ScreenGui")
     gui.Name = "TOS_"..math.random(1000, 9999)
-    gui.Parent = Services.CoreGui
+    gui.Parent = gethui()
     
     local main = Instance.new("Frame")
     main.Name = "Main"
@@ -336,7 +341,7 @@ local function CreateGui()
         return toggle
     end
     
-    local aimToggle = CreateToggle("Aimbot", false, function(enabled)
+    local aimToggle = CreateToggle("Silent Aim", false, function(enabled)
         AimAssist.Enabled = enabled
     end)
     
@@ -370,64 +375,11 @@ local function CreateGui()
     return gui
 end
 
+-- Initialize
 local function Initialize()
     local gui = CreateGui()
     
-    local lastAimUpdate = tick()
-    local lastEspUpdate = tick()
-    
-    -- Hook PF's bullet system
-    local oldBulletObject_new = Modules.BulletObject.new
-    Modules.BulletObject.new = newcclosure(function(...)
-        local Args = {...}
-        if Args[1]["extra"] and AimAssist.Enabled then
-            local Target = GetClosestPlayer()
-            if Target then
-                Args[1]["velocity"] = (Target.Position - Args[1]["position"]).unit * Args[1]["extra"]["firearmObject"]:getWeaponStat("bulletspeed")
-            end
-        end
-        return oldBulletObject_new(table.unpack(Args))
-    end)
-
-    -- Hook network send
-    local oldNetwork_send = Modules.NetworkClient.send
-    Modules.NetworkClient.send = newcclosure(function(self, Name, ...)
-        local Args = {...}
-        if Name == "newbullets" and AimAssist.Enabled then
-            local UniqueId, BulletData, Time = ...
-            for i,v in next, BulletData["bullets"] do
-                local Target = GetClosestPlayer()
-                if Target then
-                    v[1] = (Target.Position - BulletData["firepos"]).unit
-                end
-            end
-            return oldNetwork_send(self, Name, UniqueId, BulletData, Time)
-        end
-        return oldNetwork_send(self, Name, ...)
-    end)
-    
-    Services.RunService.RenderStepped:Connect(function()
-        local currentTime = tick()
-        
-        if AimAssist.Enabled and Services.UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-            if currentTime - lastAimUpdate >= 0.016 then
-                local target = GetClosestPlayer()
-                if target then
-                    UpdateAim(target)
-                end
-                lastAimUpdate = currentTime
-            end
-        else
-            State.LastTarget = nil
-            State.CurrentAcceleration = 0
-        end
-        
-        if ESP.Enabled and currentTime - lastEspUpdate >= ESP.RefreshRate then
-            UpdateESP()
-            lastEspUpdate = currentTime
-        end
-    end)
-    
+    -- Setup player handling
     Services.Players.PlayerAdded:Connect(CreateESPObject)
     Services.Players.PlayerRemoving:Connect(function(player)
         if ESPObjects[player] then
@@ -447,6 +399,30 @@ local function Initialize()
     for _, player in pairs(Services.Players:GetPlayers()) do
         CreateESPObject(player)
     end
+    
+    -- Main loop
+    local lastUpdate = tick()
+    Services.RunService.RenderStepped:Connect(function()
+        if ESP.Enabled then
+            UpdateESP()
+        end
+        
+        if AimAssist.Enabled then
+            local target = GetClosestPlayer()
+            if target then
+                if AimAssist.Mode == "Silent" then
+                    -- Silent aim handled by hooks
+                elseif AimAssist.SmoothAim.Enabled then
+                    local mousePos = Services.UserInputService:GetMouseLocation()
+                    local aimDelta = (target.Position - mousePos)
+                    mousemoverel(
+                        aimDelta.X * AimAssist.SmoothAim.Smoothness,
+                        aimDelta.Y * AimAssist.SmoothAim.Smoothness
+                    )
+                end
+            end
+        end
+    end)
     
     return true
 end
