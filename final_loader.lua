@@ -647,7 +647,7 @@ local function LoadTOSIndustries()
     Title.Position = UDim2.new(0, 10, 0, 0)
     Title.Size = UDim2.new(0, 200, 1, 0)
     Title.Font = Enum.Font.GothamBold
-    Title.Text = "TOS Industries v1 | Premium"
+    Title.Text = "TOS Industries PF"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextSize = 14
     Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -868,6 +868,13 @@ local function LoadTOSIndustries()
         end
     end)
 
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.Delete then
+            MainFrame.Visible = not MainFrame.Visible
+            CreateNotification(MainFrame.Visible and "GUI Opened" or "GUI Closed")
+        end
+    end)
+
     local LastAim = tick()
     RunService.RenderStepped:Connect(function()
         if not Security:_VALIDATE(ESP) or not Security:_VALIDATE(AimAssist) then
@@ -924,6 +931,47 @@ local function LoadTOSIndustries()
         end
     end)
     SecurityCheck()
+
+    local function CreateNotification(text)
+        local Notification = Instance.new("ScreenGui")
+        Notification.Name = Security._KEY.."_Notification"
+        Notification.Parent = CoreGui
+        
+        local Frame = Instance.new("Frame")
+        Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        Frame.BorderSizePixel = 0
+        Frame.Position = UDim2.new(1, -300, 0.8, 0)
+        Frame.Size = UDim2.new(0, 250, 0, 50)
+        Frame.Parent = Notification
+        
+        local Title = Instance.new("TextLabel")
+        Title.BackgroundTransparency = 1
+        Title.Position = UDim2.new(0, 10, 0, 5)
+        Title.Size = UDim2.new(1, -20, 0, 20)
+        Title.Font = Enum.Font.GothamBold
+        Title.Text = "TOS Industries PF"
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.TextSize = 14
+        Title.TextXAlignment = Enum.TextXAlignment.Left
+        Title.Parent = Frame
+        
+        local Message = Instance.new("TextLabel")
+        Message.BackgroundTransparency = 1
+        Message.Position = UDim2.new(0, 10, 0, 25)
+        Message.Size = UDim2.new(1, -20, 0, 20)
+        Message.Font = Enum.Font.Gotham
+        Message.Text = text
+        Message.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Message.TextSize = 12
+        Message.TextXAlignment = Enum.TextXAlignment.Left
+        Message.Parent = Frame
+        
+        TweenService:Create(Frame, TweenInfo.new(0.5), {Position = UDim2.new(1, -270, 0.8, 0)}):Play()
+        task.wait(2)
+        TweenService:Create(Frame, TweenInfo.new(0.5), {Position = UDim2.new(1, 0, 0.8, 0)}):Play()
+        task.wait(0.5)
+        Notification:Destroy()
+    end
 
     return true
 end 
