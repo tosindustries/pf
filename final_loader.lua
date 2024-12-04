@@ -623,7 +623,75 @@ local function startScript()
         end
     end
     
+    -- Initialize Aimbot
+    local Aimbot = {
+        Enabled = false,
+        Active = false,
+        Silent = false,
+        ShowFOV = true,
+        TargetPart = "Head",
+        FOV = 100,
+        Smoothness = 2,
+        TeamCheck = true,
+        VisibilityCheck = false,
+        PredictMovement = true,
+        PredictionAmount = 0.165,
+        HitChance = 100,
+        AutoShoot = false
+    }
+    
     -- Create UI elements
+    local aimbotToggle = UI.createToggle("Enable Aimbot", ui.Pages.Aimbot, function(state)
+        Aimbot.Enabled = state
+        if not state then
+            Aimbot.Active = false
+            Aimbot.Silent = false
+        end
+        fovCircle.Visible = state and Aimbot.ShowFOV
+    end)
+    
+    local silentAimToggle = UI.createToggle("Silent Aim", ui.Pages.Aimbot, function(state)
+        Aimbot.Silent = state
+        if state then
+            Aimbot.Active = false
+        end
+    end)
+    
+    local fovCircleToggle = UI.createToggle("Show FOV Circle", ui.Pages.Aimbot, function(state)
+        Aimbot.ShowFOV = state
+        fovCircle.Visible = state and Aimbot.Enabled
+    end)
+    
+    local autoShootToggle = UI.createToggle("Auto Shoot", ui.Pages.Aimbot, function(state)
+        Aimbot.AutoShoot = state
+    end)
+    
+    local hitChanceSlider = UI.createSlider("Hit Chance", ui.Pages.Aimbot, 1, 100, 100, function(value)
+        Aimbot.HitChance = value
+    end)
+    
+    local fovSlider = UI.createSlider("FOV Size", ui.Pages.Aimbot, 10, 800, 100, function(value)
+        Aimbot.FOV = value
+        fovCircle.Radius = value
+    end)
+    
+    local smoothnessSlider = UI.createSlider("Smoothness", ui.Pages.Aimbot, 1, 10, 2, function(value)
+        Aimbot.Smoothness = value
+    end)
+    
+    local teamCheckToggle = UI.createToggle("Team Check", ui.Pages.Aimbot, function(state)
+        Aimbot.TeamCheck = state
+    end)
+    
+    local visibilityCheckToggle = UI.createToggle("Visibility Check", ui.Pages.Aimbot, function(state)
+        Aimbot.VisibilityCheck = state
+    end)
+    
+    local predictionToggle = UI.createToggle("Movement Prediction", ui.Pages.Aimbot, function(state)
+        Aimbot.PredictMovement = state
+    end)
+    
+    -- Visuals Tab
     local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
         ESP.Enabled = state
         if not state then
@@ -657,6 +725,27 @@ local function startScript()
         ESP.TeamCheck = state
     end)
     
+    -- Set initial states
+    aimbotToggle.SetState(false)
+    silentAimToggle.SetState(false)
+    fovCircleToggle.SetState(true)
+    autoShootToggle.SetState(false)
+    hitChanceSlider.SetValue(100)
+    fovSlider.SetValue(100)
+    smoothnessSlider.SetValue(2)
+    teamCheckToggle.SetState(true)
+    visibilityCheckToggle.SetState(false)
+    predictionToggle.SetState(true)
+    espToggle.SetState(false)
+    boxesToggle.SetState(true)
+    namesToggle.SetState(true)
+    healthToggle.SetState(true)
+    distanceToggle.SetState(true)
+    tracersToggle.SetState(true)
+    
+    -- Make sure UI is visible initially
+    ui.MainFrame.Visible = true
+    
     -- Initialize ESP
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
@@ -674,80 +763,6 @@ local function startScript()
     end)
     
     -- Update loop
-    RunService:BindToRenderStep("ESP", Enum.RenderPriority.Camera.Value + 1, function()
-        ESP:Update()
-    end)
-    
-    -- Initialize ESP connections
-    ESP.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
-        ESP:CreateDrawings(player)
-    end)
-    
-    ESP.Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
-        ESP:RemoveDrawings(player)
-    end)
-    
-    -- Initialize existing players
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            ESP:CreateDrawings(player)
-        end
-    end
-    
-    -- Aimbot Functions
-    local function GetClosestPlayerToCursor()
-        local closestPlayer = nil
-        local shortestDistance = math.huge
-        local mousePos = Vector2.new(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
-        
-        for _, player in pairs(Players:GetPlayers()) do
-            if player == LocalPlayer then continue end
-            if Aimbot.TeamCheck and player.Team == LocalPlayer.Team then continue end
-            
-            local character = player.Character
-            if not character then continue end
-            
-            local humanoid = character:FindFirstChild("Humanoid")
-            if not humanoid or humanoid.Health <= 0 then continue end
-            
-            local part = character:FindFirstChild(Aimbot.TargetPart)
-            if not part then continue end
-            
-            local partPos = part.Position
-            if Aimbot.PredictMovement then
-                local velocity = part.Velocity
-                partPos = partPos + (velocity * Aimbot.PredictionAmount)
-            end
-            
-            local screenPos, onScreen = Camera:WorldToViewportPoint(partPos)
-            if not onScreen then continue end
-            
-            local screenPosition = Vector2.new(screenPos.X, screenPos.Y)
-            local distance = (screenPosition - mousePos).Magnitude
-            
-            if distance > Aimbot.FOV then continue end
-            
-            if Aimbot.VisibilityCheck then
-                local rayOrigin = Camera.CFrame.Position
-                local rayDirection = (partPos - rayOrigin).Unit
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterDescendantsInstances = {character, Camera}
-                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-                
-                local raycastResult = workspace:Raycast(rayOrigin, rayDirection * 1000, raycastParams)
-                if raycastResult then continue end
-            end
-            
-            if distance < shortestDistance then
-                closestPlayer = player
-                shortestDistance = distance
-            end
-        end
-        
-        return closestPlayer
-    end
-    
-    -- Update FOV circle and Aimbot in RenderStepped
     RunService:BindToRenderStep("AimbotESP", Enum.RenderPriority.Camera.Value + 1, function()
         -- Update FOV circle position
         if fovCircle.Visible then
@@ -877,6 +892,59 @@ local function startScript()
             cleanup()
         end
     end)
+    
+    -- Aimbot Functions
+    local function GetClosestPlayerToCursor()
+        local closestPlayer = nil
+        local shortestDistance = math.huge
+        local mousePos = Vector2.new(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
+        
+        for _, player in pairs(Players:GetPlayers()) do
+            if player == LocalPlayer then continue end
+            if Aimbot.TeamCheck and player.Team == LocalPlayer.Team then continue end
+            
+            local character = player.Character
+            if not character then continue end
+            
+            local humanoid = character:FindFirstChild("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then continue end
+            
+            local part = character:FindFirstChild(Aimbot.TargetPart)
+            if not part then continue end
+            
+            local partPos = part.Position
+            if Aimbot.PredictMovement then
+                local velocity = part.Velocity
+                partPos = partPos + (velocity * Aimbot.PredictionAmount)
+            end
+            
+            local screenPos, onScreen = Camera:WorldToViewportPoint(partPos)
+            if not onScreen then continue end
+            
+            local screenPosition = Vector2.new(screenPos.X, screenPos.Y)
+            local distance = (screenPosition - mousePos).Magnitude
+            
+            if distance > Aimbot.FOV then continue end
+            
+            if Aimbot.VisibilityCheck then
+                local rayOrigin = Camera.CFrame.Position
+                local rayDirection = (partPos - rayOrigin).Unit
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterDescendantsInstances = {character, Camera}
+                raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                
+                local raycastResult = workspace:Raycast(rayOrigin, rayDirection * 1000, raycastParams)
+                if raycastResult then continue end
+            end
+            
+            if distance < shortestDistance then
+                closestPlayer = player
+                shortestDistance = distance
+            end
+        end
+        
+        return closestPlayer
+    end
     
     return true
 end
