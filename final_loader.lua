@@ -3,59 +3,116 @@
 -- This script is protected by various security measures.
 -- Unauthorized use, copying, or distribution is strictly prohibited.
 
--- Initial security and validation
-local function validateExecution()
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Solara compatibility layer
+local function setupSolaraCompat()
     local env = getfenv(0)
-    if env.game ~= game then return false end
-    if not game:IsLoaded() then game.Loaded:Wait() end
-    if game.PlaceId ~= 292439477 then return false end
-    if not game:GetService("Players").LocalPlayer then return false end
+    if not env or type(env) ~= "table" then return false end
+    
+    -- Solara-specific checks
+    local function validateSolara()
+        local success = pcall(function()
+            return game:GetService("CoreGui"):WaitForChild("RobloxGui", 1)
+        end)
+        return success
+    end
+    
+    -- Wait for game load
+    if not game:IsLoaded() then 
+        game.Loaded:Wait()
+    end
+    
+    -- Additional validation
+    if not validateSolara() then
+        warn("Initialization failed - Please try again")
+        return false
+    end
+    
     return true
 end
 
-if not validateExecution() then
-    warn("Validation failed - Execution terminated")
+-- Initial validation
+if not setupSolaraCompat() then
+    warn("Compatibility check failed")
     return false
 end
 
--- Anti-tamper protection
-local function setupAntiTamper()
-    local mt = getrawmetatable(game)
-    local old = mt.__namecall
-    setreadonly(mt, false)
+-- Protected environment setup
+local function createSecureEnv()
+    local secureEnv = {}
+    local blacklistedKeys = {
+        "http",
+        "Kick",
+        "kick",
+        "HttpGet",
+        "HttpPost"
+    }
     
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if method == "HttpGet" or method == "HttpPost" then
-            local args = {...}
-            if typeof(args[1]) == "string" and args[1]:match("tos%-industries") then
-                return old(self, ...)
+    return setmetatable(secureEnv, {
+        __index = function(_, key)
+            if table.find(blacklistedKeys, key) then
+                return function() end
             end
+            return getfenv(0)[key]
         end
-        if method:match("Kick") or method:match("kick") then
-            return wait(9e9)
-        end
-        return old(self, ...)
-    end)
-    
-    setreadonly(mt, true)
+    })
 end
 
--- Memory protection
+-- Set up protected environment
+local secureEnv = createSecureEnv()
+setfenv(1, secureEnv)
+
+-- Anti-tamper protection
+local function setupAntiTamper()
+    local success, result = pcall(function()
+        local mt = getrawmetatable(game)
+        if not mt then return false end
+        
+        local old = mt.__namecall
+        setreadonly(mt, false)
+        
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "HttpGet" or method == "HttpPost" then
+                return old(self, ...)
+            end
+            if method:match("Kick") or method:match("kick") then
+                return wait(9e9)
+            end
+            return old(self, ...)
+        end)
+        
+        setreadonly(mt, true)
+        return true
+    end)
+    
+    return success and result
+end
+
+-- Memory protection optimized for Solara
 local function protectMemory()
-    local fenv = getfenv()
     local protected = {}
     
-    for k,v in pairs(fenv) do
-        protected[k] = type(v) == "function" and function(...)
-            local info = debug.getinfo(2, "n")
-            if info and info.name and (info.name:match("Anti") or info.name:match("Check")) then
-                return true
+    -- Basic environment protection
+    for k, v in pairs(getfenv()) do
+        if type(v) == "function" then
+            protected[k] = function(...)
+                local success, result = pcall(v, ...)
+                if not success then return nil end
+                return result
             end
-            return v(...)
-        end or v
+        else
+            protected[k] = v
+        end
     end
     
+    -- Solara-specific protection
     protected._G = setmetatable({}, {
         __index = _G,
         __newindex = function() end,
@@ -63,6 +120,33 @@ local function protectMemory()
     })
     
     return protected
+end
+
+-- Initialize security with Solara compatibility
+local function initSecurity()
+    local success = pcall(function()
+        -- Set up anti-tamper
+        if not setupAntiTamper() then
+            return false
+        end
+        
+        -- Set up memory protection
+        local protectedEnv = protectMemory()
+        setfenv(1, protectedEnv)
+        
+        -- Disable idle detection
+        for _, v in pairs(getconnections(LocalPlayer.Idled)) do
+            v:Disable()
+        end
+    end)
+    
+    return success
+end
+
+-- Initialize security
+if not initSecurity() then
+    warn("Security initialization failed - Please try again")
+    return false
 end
 
 -- Initial checks and security setup
@@ -480,35 +564,6 @@ function Aimbot:Update()
     else
         Camera.CFrame = CFrame.new(cameraPos) * smoothRotation
     end
-end
-
--- Initialize security
-local success, result = pcall(function()
-    setupAntiTamper()
-    local protectedEnv = protectMemory()
-    setfenv(1, protectedEnv)
-    
-    -- Additional security checks
-    for _, v in pairs(getconnections(game:GetService("Players").LocalPlayer.Idled)) do
-        v:Disable()
-    end
-    
-    -- Anti-debug
-    if debug.info or debug.traceback then
-        local old = debug.info
-        debug.info = function(...)
-            local info = old(...)
-            if info and type(info) == "string" and (info:match("Anti") or info:match("Check")) then
-                return ""
-            end
-            return info
-        end
-    end
-end)
-
-if not success then
-    warn("Security initialization failed")
-    return false
 end
 
 -- Initialize core components
