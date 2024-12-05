@@ -8,384 +8,142 @@ local function startScript()
     local UserInputService = game:GetService("UserInputService")
     local CoreGui = game:GetService("CoreGui")
     local Camera = workspace.CurrentCamera
-    local CurrentCamera = workspace.CurrentCamera
-    local worldToViewportPoint = CurrentCamera.worldToViewportPoint
-
+    
     local LocalPlayer = Players.LocalPlayer
-    local HeadOff = Vector3.new(0, 0.5, 0)
-    local LegOff = Vector3.new(0, 3, 0)
-
-    -- Safe function call wrapper
-    local function safecall(func, ...)
-        local success, result = pcall(func, ...)
-        if not success then
-            warn("Error:", result)
-        end
-        return success, result
+    
+    -- Variables
+    local aimbotActive = false
+    local aimbotTeamCheck = true
+    local aimbotVisibilityCheck = true
+    local aimbotSmoothing = true
+    local aimbotSmoothingAmount = 2
+    local showFOV = true
+    local fovSize = 120
+    local aimbotTargetPart = "Head"
+    local aimbotPrediction = true
+    local aimbotPredictionAmount = 0.165
+    local aimbotTargetMode = "Distance" -- Distance, Health, Random
+    local aimbotTriggerBot = false
+    local aimbotTriggerBotDelay = 0
+    local aimbotSilent = false
+    local aimbotWallbang = false
+    local aimbotAutoShoot = false
+    local aimbotAutoReload = false
+    local aimbotJumpCheck = false
+    local aimbotDisableOnJump = false
+    local lastToggleTime = 0
+    local TOGGLE_COOLDOWN = 0.3
+    local lastShotTime = 0
+    local SHOT_COOLDOWN = 0.1
+    
+    -- FOV Circle
+    local fovCircle = Drawing.new("Circle")
+    fovCircle.Visible = false
+    fovCircle.Radius = fovSize
+    fovCircle.Color = Color3.new(1, 1, 1)
+    fovCircle.Thickness = 1
+    fovCircle.Filled = false
+    fovCircle.Transparency = 1
+    fovCircle.NumSides = 60
+    
+    -- Aimbot Functions
+    local function isVisible(part)
+        local origin = Camera.CFrame.Position
+        local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if not onScreen then return false end
+        
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+        
+        local direction = (part.Position - origin).Unit
+        local distance = (part.Position - origin).Magnitude
+        
+        local result = workspace:Raycast(origin, direction * distance, rayParams)
+        return not result or result.Instance == part
     end
-
-    -- Notification System
-    local function createNotification(text, duration)
-        duration = duration or 3
-        
-        local notification = Instance.new("ScreenGui")
-        notification.Name = "Notification"
-        notification.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        
-        if syn and syn.protect_gui then
-            syn.protect_gui(notification)
-            notification.Parent = CoreGui
-        else
-            notification.Parent = CoreGui
-        end
-        
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 200, 0, 40)
-        frame.Position = UDim2.new(1, -220, 0.8, 0)
-        frame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-        frame.BorderSizePixel = 0
-        frame.Parent = notification
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = frame
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -20, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = text
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextSize = 14
-        label.Font = Enum.Font.GothamSemibold
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.TextWrapped = true
-        label.Parent = frame
-        
-        -- Animation
-        frame.Position = UDim2.new(1, 20, 0.8, 0)
-        game:GetService("TweenService"):Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-            Position = UDim2.new(1, -220, 0.8, 0)
-        }):Play()
-        
-        -- Auto remove
-        task.delay(duration, function()
-            game:GetService("TweenService"):Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
-                Position = UDim2.new(1, 20, 0.8, 0)
-            }):Play()
-            task.wait(0.3)
-            notification:Destroy()
-        end)
+    
+    local function predictPosition(part, velocity)
+        if not aimbotPrediction then return part.Position end
+        local distance = (part.Position - Camera.CFrame.Position).Magnitude
+        local timeToHit = distance / velocity
+        return part.Position + (part.Velocity * timeToHit * aimbotPredictionAmount)
     end
-
-    -- Create UI System
-    local UI = {}
-
-    function UI.createMenuButton(text, order, parent)
-        local button = Instance.new("TextButton")
-        button.Name = text .. "Button"
-        button.Size = UDim2.new(0, 70, 1, 0)
-        button.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-        button.Text = text
-        button.TextColor3 = Color3.fromRGB(200, 200, 200)
-        button.TextSize = 14
-        button.Font = Enum.Font.GothamSemibold
-        button.LayoutOrder = order
-        button.Parent = parent
+    
+    local function canWallbang(origin, part)
+        if not aimbotWallbang then return false end
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, part.Parent}
         
-        local buttonCorner = Instance.new("UICorner")
-        buttonCorner.CornerRadius = UDim.new(0, 6)
-        buttonCorner.Parent = button
+        local direction = (part.Position - origin).Unit
+        local distance = (part.Position - origin).Magnitude
+        local result = workspace:Raycast(origin, direction * distance, rayParams)
         
-        return button
+        return result and result.Material and (
+            result.Material == Enum.Material.Glass or
+            result.Material == Enum.Material.Wood or
+            result.Material == Enum.Material.WoodPlanks or
+            result.Material == Enum.Material.Plastic
+        )
     end
-
-    function UI.createToggle(text, parent, callback)
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, 0, 0, 30)
-        container.BackgroundTransparency = 1
-        container.Parent = parent
+    
+    local function getTargetPlayer()
+        local players = {}
+        local mousePos = UserInputService:GetMouseLocation()
         
-        local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, 0, 1, 0)
-        button.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
-        button.BorderSizePixel = 0
-        button.Text = ""
-        button.Parent = container
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -50, 1, 0)
-        label.Position = UDim2.new(0, 10, 0, 0)
-        label.BackgroundTransparency = 1
-        label.Text = text
-        label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        label.TextSize = 14
-        label.Font = Enum.Font.GothamSemibold
-        label.TextXAlignment = Enum.TextXAlignment.Left
-        label.Parent = button
-        
-        local toggle = Instance.new("Frame")
-        toggle.Size = UDim2.new(0, 40, 0, 20)
-        toggle.Position = UDim2.new(1, -45, 0.5, -10)
-        toggle.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-        toggle.BorderSizePixel = 0
-        toggle.Parent = button
-        
-        local indicator = Instance.new("Frame")
-        indicator.Size = UDim2.new(0, 16, 0, 16)
-        indicator.Position = UDim2.new(0, 2, 0.5, -8)
-        indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        indicator.BorderSizePixel = 0
-        indicator.Parent = toggle
-        
-        local state = false
-        
-        local function updateToggle()
-            state = not state
-            local pos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-            local color = state and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(255, 255, 255)
+        for _, player in pairs(Players:GetPlayers()) do
+            if player == LocalPlayer then continue end
+            if aimbotTeamCheck and player.Team == LocalPlayer.Team then continue end
             
-            indicator.Position = pos
-            indicator.BackgroundColor3 = color
-            toggle.BackgroundColor3 = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(30, 30, 45)
+            local character = player.Character
+            if not character then continue end
             
-            callback(state)
-        end
-        
-        button.MouseButton1Click:Connect(updateToggle)
-        
-        return {
-            Frame = container,
-            SetState = function(newState)
-                if state ~= newState then
-                    updateToggle()
-                end
-            end,
-            GetState = function()
-                return state
-            end
-        }
-    end
-
-    function UI.createSlider(text, parent, min, max, default, callback)
-        -- ... (keep existing slider code)
-    end
-
-    function UI.createDropdown(text, parent, options, callback)
-        -- ... (keep existing dropdown code)
-    end
-
-    function UI.new()
-        -- Remove existing UI if it exists
-        for _, child in pairs(CoreGui:GetChildren()) do
-            if child.Name == "TOSIndustriesV1" then
-                child:Destroy()
-            end
-        end
-
-        local screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "TOSIndustriesV1"
-        screenGui.ResetOnSpawn = false
-        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        
-        -- Handle different exploit environments
-        local success, _ = pcall(function()
-            if syn then
-                syn.protect_gui(screenGui)
-                screenGui.Parent = CoreGui
-            elseif gethui then
-                screenGui.Parent = gethui()
-            else
-                screenGui.Parent = CoreGui
-            end
-        end)
-        
-        if not success then
-            screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        end
-        
-        local mainFrame = Instance.new("Frame")
-        mainFrame.Name = "MainFrame"
-        mainFrame.Size = UDim2.new(0, 300, 0, 400)
-        mainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
-        mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-        mainFrame.BorderSizePixel = 0
-        mainFrame.Parent = screenGui
-        
-        local mainCorner = Instance.new("UICorner")
-        mainCorner.CornerRadius = UDim.new(0, 8)
-        mainCorner.Parent = mainFrame
-        
-        local shadow = Instance.new("ImageLabel")
-        shadow.Name = "Shadow"
-        shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-        shadow.BackgroundTransparency = 1
-        shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-        shadow.Size = UDim2.new(1, 47, 1, 47)
-        shadow.ZIndex = 0
-        shadow.Image = "rbxassetid://6015897843"
-        shadow.ImageColor3 = Color3.new(0, 0, 0)
-        shadow.ImageTransparency = 0.5
-        shadow.Parent = mainFrame
-        
-        local topBar = Instance.new("Frame")
-        topBar.Name = "TopBar"
-        topBar.Size = UDim2.new(1, 0, 0, 35)
-        topBar.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-        topBar.BorderSizePixel = 0
-        topBar.Parent = mainFrame
-        
-        local topCorner = Instance.new("UICorner")
-        topCorner.CornerRadius = UDim.new(0, 8)
-        topCorner.Parent = topBar
-        
-        local title = Instance.new("TextLabel")
-        title.Name = "Title"
-        title.Size = UDim2.new(1, -40, 1, 0)
-        title.Position = UDim2.new(0, 10, 0, 0)
-        title.BackgroundTransparency = 1
-        title.Text = "TOS Industries v1"
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextSize = 16
-        title.Font = Enum.Font.GothamBold
-        title.TextXAlignment = Enum.TextXAlignment.Left
-        title.Parent = topBar
-        
-        local closeButton = Instance.new("TextButton")
-        closeButton.Name = "CloseButton"
-        closeButton.Size = UDim2.new(0, 30, 0, 30)
-        closeButton.Position = UDim2.new(1, -35, 0, 2)
-        closeButton.BackgroundColor3 = Color3.fromRGB(255, 95, 95)
-        closeButton.Text = "×"
-        closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        closeButton.TextSize = 20
-        closeButton.Font = Enum.Font.GothamBold
-        closeButton.Parent = topBar
-        
-        local closeCorner = Instance.new("UICorner")
-        closeCorner.CornerRadius = UDim.new(0, 6)
-        closeCorner.Parent = closeButton
-        
-        closeButton.MouseButton1Click:Connect(function()
-            mainFrame.Visible = false
-        end)
-        
-        local menuButtons = Instance.new("Frame")
-        menuButtons.Name = "MenuButtons"
-        menuButtons.Size = UDim2.new(1, -20, 0, 40)
-        menuButtons.Position = UDim2.new(0, 10, 0, 45)
-        menuButtons.BackgroundTransparency = 1
-        menuButtons.Parent = mainFrame
-        
-        local menuLayout = Instance.new("UIListLayout")
-        menuLayout.FillDirection = Enum.FillDirection.Horizontal
-        menuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-        menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        menuLayout.Padding = UDim.new(0, 10)
-        menuLayout.Parent = menuButtons
-        
-        local contentContainer = Instance.new("Frame")
-        contentContainer.Name = "ContentContainer"
-        contentContainer.Size = UDim2.new(1, -20, 1, -95)
-        contentContainer.Position = UDim2.new(0, 10, 0, 90)
-        contentContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
-        contentContainer.BorderSizePixel = 0
-        contentContainer.Parent = mainFrame
-        
-        local containerCorner = Instance.new("UICorner")
-        containerCorner.CornerRadius = UDim.new(0, 8)
-        containerCorner.Parent = contentContainer
-        
-        -- Create pages
-        local pages = {
-            Aimbot = Instance.new("ScrollingFrame"),
-            Visuals = Instance.new("ScrollingFrame"),
-            Settings = Instance.new("ScrollingFrame")
-        }
-        
-        for name, frame in pairs(pages) do
-            frame.Name = name .. "Page"
-            frame.Size = UDim2.new(1, -20, 1, -20)
-            frame.Position = UDim2.new(0, 10, 0, 10)
-            frame.BackgroundTransparency = 1
-            frame.BorderSizePixel = 0
-            frame.ScrollBarThickness = 2
-            frame.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
-            frame.Visible = false
-            frame.Parent = contentContainer
+            local humanoid = character:FindFirstChild("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then continue end
             
-            local layout = Instance.new("UIListLayout")
-            layout.Padding = UDim.new(0, 10)
-            layout.Parent = frame
+            local part = character:FindFirstChild(aimbotTargetPart)
+            if not part then continue end
+            
+            if aimbotVisibilityCheck and not (isVisible(part) or canWallbang(Camera.CFrame.Position, part)) then continue end
+            
+            if aimbotJumpCheck then
+                local root = character:FindFirstChild("HumanoidRootPart")
+                if root and math.abs(root.Velocity.Y) > 0.1 then continue end
+            end
+            
+            local pos = Camera:WorldToViewportPoint(part.Position)
+            if not pos then continue end
+            
+            local distance = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+            if distance > fovSize then continue end
+            
+            table.insert(players, {
+                Player = player,
+                Character = character,
+                Humanoid = humanoid,
+                Part = part,
+                Distance = distance,
+                Health = humanoid.Health,
+                Position = pos
+            })
         end
         
-        local buttons = {
-            Aimbot = UI.createMenuButton("Aimbot", 1, menuButtons),
-            Visuals = UI.createMenuButton("Visuals", 2, menuButtons),
-            Settings = UI.createMenuButton("Settings", 3, menuButtons)
-        }
+        if #players == 0 then return nil end
         
-        local currentPage = "Aimbot"
-        pages[currentPage].Visible = true
-        buttons[currentPage].BackgroundColor3 = Color3.fromRGB(45, 45, 65)
-        buttons[currentPage].TextColor3 = Color3.fromRGB(255, 255, 255)
-        
-        for name, button in pairs(buttons) do
-            button.MouseButton1Click:Connect(function()
-                if currentPage == name then return end
-                
-                -- Hide current page
-                pages[currentPage].Visible = false
-                buttons[currentPage].BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-                buttons[currentPage].TextColor3 = Color3.fromRGB(200, 200, 200)
-                
-                -- Show new page
-                currentPage = name
-                pages[currentPage].Visible = true
-                button.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
-                button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            end)
+        -- Sort based on targeting mode
+        if aimbotTargetMode == "Distance" then
+            table.sort(players, function(a, b) return a.Distance < b.Distance end)
+        elseif aimbotTargetMode == "Health" then
+            table.sort(players, function(a, b) return a.Health < b.Health end)
+        elseif aimbotTargetMode == "Random" then
+            return players[math.random(1, #players)]
         end
         
-        -- Make window draggable
-        local dragging = false
-        local dragStart = nil
-        local startPos = nil
-        
-        topBar.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = true
-                dragStart = input.Position
-                startPos = mainFrame.Position
-            end
-        end)
-        
-        UserInputService.InputChanged:Connect(function(input)
-            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                local delta = input.Position - dragStart
-                mainFrame.Position = UDim2.new(
-                    startPos.X.Scale,
-                    startPos.X.Offset + delta.X,
-                    startPos.Y.Scale,
-                    startPos.Y.Offset + delta.Y
-                )
-            end
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = false
-            end
-        end)
-        
-        return {
-            ScreenGui = screenGui,
-            MainFrame = mainFrame,
-            Pages = pages
-        }
+        return players[1]
     end
-
-    -- ESP Settings
+    
+    -- ESP System
     local ESP = {
         Enabled = false,
         TeamCheck = true,
@@ -395,139 +153,207 @@ local function startScript()
         ShowDistance = true,
         ShowTracer = true,
         MaxDistance = 1000,
-        BoxThickness = 3,
-        TracerThickness = 2,
-        TracerOrigin = "Bottom", -- "Bottom", "Mouse", "Top"
+        BoxThickness = 2,
+        TracerThickness = 1,
+        TracerOrigin = "Bottom",
         TextSize = 13,
         Objects = {},
-        Connections = {}, -- Store all connections for proper cleanup
-        Active = false -- Track if ESP system is active
+        Connections = {}
     }
-
+    
     function ESP:CreateObject(player)
         if not player or not player.Parent then return end
         if self.Objects[player] then return end
         
-        -- Create drawings with error handling
-        local function createDrawing(drawingType, properties)
-            local success, drawing = pcall(function()
-                local d = Drawing.new(drawingType)
-                for prop, value in pairs(properties) do
-                    d[prop] = value
-                end
-                return d
-            end)
-            
-            if not success then
-                warn("Failed to create drawing:", drawing)
-                return nil
-            end
-            return drawing
-        end
+        -- Box
+        local box = Drawing.new("Square")
+        box.Visible = false
+        box.Thickness = self.BoxThickness
+        box.Filled = false
+        box.Transparency = 1
         
-        -- Create all drawings
-        local drawings = {
-            Box = createDrawing("Square", {
-                Visible = false,
-                Color = player.TeamColor.Color,
-                Thickness = self.BoxThickness,
-                Transparency = 1,
-                Filled = false,
-                ZIndex = 1
-            }),
-            BoxOutline = createDrawing("Square", {
-                Visible = false,
-                Color = Color3.new(0, 0, 0),
-                Thickness = self.BoxThickness + 1,
-                Transparency = 1,
-                Filled = false,
-                ZIndex = 0
-            }),
-            HealthBar = createDrawing("Line", {
-                Visible = false,
-                Color = Color3.new(0, 1, 0),
-                Thickness = 2,
-                Transparency = 1,
-                ZIndex = 2
-            }),
-            HealthBarOutline = createDrawing("Line", {
-                Visible = false,
-                Color = Color3.new(0, 0, 0),
-                Thickness = 4,
-                Transparency = 1,
-                ZIndex = 1
-            }),
-            Name = createDrawing("Text", {
-                Visible = false,
-                Color = Color3.new(1, 1, 1),
-                Size = self.TextSize,
-                Center = true,
-                Outline = true,
-                OutlineColor = Color3.new(0, 0, 0),
-                ZIndex = 2
-            }),
-            Distance = createDrawing("Text", {
-                Visible = false,
-                Color = Color3.new(1, 1, 1),
-                Size = self.TextSize,
-                Center = true,
-                Outline = true,
-                OutlineColor = Color3.new(0, 0, 0),
-                ZIndex = 2
-            }),
-            Tracer = createDrawing("Line", {
-                Visible = false,
-                Color = player.TeamColor.Color,
-                Thickness = self.TracerThickness,
-                Transparency = 1,
-                ZIndex = 1
-            }),
-            TracerOutline = createDrawing("Line", {
-                Visible = false,
-                Color = Color3.new(0, 0, 0),
-                Thickness = self.TracerThickness + 1,
-                Transparency = 1,
-                ZIndex = 0
-            })
+        -- Box outline
+        local boxOutline = Drawing.new("Square")
+        boxOutline.Visible = false
+        boxOutline.Color = Color3.new(0, 0, 0)
+        boxOutline.Thickness = self.BoxThickness + 2
+        boxOutline.Filled = false
+        boxOutline.Transparency = 1
+        
+        -- Health bar background
+        local healthBG = Drawing.new("Square")
+        healthBG.Visible = false
+        healthBG.Color = Color3.new(1, 0, 0)
+        healthBG.Filled = true
+        healthBG.Thickness = 1
+        healthBG.Transparency = 1
+        
+        -- Health bar
+        local healthBar = Drawing.new("Square")
+        healthBar.Visible = false
+        healthBar.Color = Color3.new(0, 1, 0)
+        healthBar.Filled = true
+        healthBar.Thickness = 1
+        healthBar.Transparency = 1
+        
+        -- Name
+        local name = Drawing.new("Text")
+        name.Visible = false
+        name.Center = true
+        name.Outline = true
+        name.Size = self.TextSize
+        name.Font = 2
+        name.Color = Color3.new(1, 1, 1)
+        
+        -- Distance
+        local distance = Drawing.new("Text")
+        distance.Visible = false
+        distance.Center = true
+        distance.Outline = true
+        distance.Size = self.TextSize
+        distance.Font = 2
+        distance.Color = Color3.new(1, 1, 1)
+        
+        -- Tracer
+        local tracer = Drawing.new("Line")
+        tracer.Visible = false
+        tracer.Thickness = self.TracerThickness
+        tracer.Transparency = 1
+        
+        -- Tracer outline
+        local tracerOutline = Drawing.new("Line")
+        tracerOutline.Visible = false
+        tracerOutline.Color = Color3.new(0, 0, 0)
+        tracerOutline.Thickness = self.TracerThickness + 2
+        tracerOutline.Transparency = 1
+        
+        self.Objects[player] = {
+            Box = box,
+            BoxOutline = boxOutline,
+            HealthBG = healthBG,
+            HealthBar = healthBar,
+            Name = name,
+            Distance = distance,
+            Tracer = tracer,
+            TracerOutline = tracerOutline
         }
         
-        -- Check if any drawings failed to create
-        for name, drawing in pairs(drawings) do
-            if not drawing then
-                -- Cleanup any successfully created drawings
-                for _, d in pairs(drawings) do
-                    if d then d:Remove() end
+        self.Connections[player] = RunService.RenderStepped:Connect(function()
+            if not self.Enabled then
+                for _, drawing in pairs(self.Objects[player]) do
+                    drawing.Visible = false
                 end
                 return
             end
-        end
-        
-        -- Create update connection
-        local connection = RunService.RenderStepped:Connect(function()
-            if not self.Active then return end
-            safecall(function()
-                self:UpdateESP(player, drawings)
-            end)
-        end)
-        
-        self.Objects[player] = drawings
-        self.Connections[player] = connection
-    end
-
-    function ESP:RemoveObject(player)
-        local drawings = self.Objects[player]
-        if not drawings then return end
-        
-        -- Remove all drawings
-        safecall(function()
-            for _, drawing in pairs(drawings) do
-                if drawing and drawing.Remove then
-                    drawing:Remove()
+            
+            local character = player.Character
+            if not character then return end
+            
+            local humanoid = character:FindFirstChild("Humanoid")
+            local rootPart = character:FindFirstChild("HumanoidRootPart")
+            if not humanoid or not rootPart or humanoid.Health <= 0 then return end
+            
+            if self.TeamCheck and player.Team == LocalPlayer.Team then return end
+            
+            local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+            if distance > self.MaxDistance then return end
+            
+            local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+            if not onScreen then return end
+            
+            -- Calculate box size
+            local size = (Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(rootPart.Position + Vector3.new(0, 2.5, 0)).Y) / 2
+            local boxSize = Vector2.new(size * 1.5, size * 3)
+            local boxPosition = Vector2.new(pos.X - size * 1.5 / 2, pos.Y - size * 1.5)
+            
+            -- Update box
+            if self.ShowBox then
+                boxOutline.Size = boxSize
+                boxOutline.Position = boxPosition
+                boxOutline.Visible = true
+                
+                box.Size = boxSize
+                box.Position = boxPosition
+                box.Color = player.TeamColor.Color
+                box.Visible = true
+            else
+                box.Visible = false
+                boxOutline.Visible = false
+            end
+            
+            -- Update health bar
+            if self.ShowHealth then
+                local health = humanoid.Health / humanoid.MaxHealth
+                local barHeight = boxSize.Y
+                local barWidth = 4
+                
+                healthBG.Size = Vector2.new(barWidth, barHeight)
+                healthBG.Position = Vector2.new(boxPosition.X - barWidth * 2, boxPosition.Y)
+                healthBG.Visible = true
+                
+                healthBar.Size = Vector2.new(barWidth, barHeight * health)
+                healthBar.Position = Vector2.new(boxPosition.X - barWidth * 2, boxPosition.Y + barHeight * (1 - health))
+                healthBar.Color = Color3.new(1 - health, health, 0)
+                healthBar.Visible = true
+            else
+                healthBG.Visible = false
+                healthBar.Visible = false
+            end
+            
+            -- Update name
+            if self.ShowName then
+                name.Position = Vector2.new(pos.X, boxPosition.Y - 15)
+                name.Text = player.Name
+                name.Color = player.TeamColor.Color
+                name.Visible = true
+            else
+                name.Visible = false
+            end
+            
+            -- Update distance
+            if self.ShowDistance then
+                distance.Position = Vector2.new(pos.X, boxPosition.Y + boxSize.Y + 5)
+                distance.Text = string.format("[%dm]", math.floor(distance))
+                distance.Color = player.TeamColor.Color
+                distance.Visible = true
+            else
+                distance.Visible = false
+            end
+            
+            -- Update tracer
+            if self.ShowTracer then
+                local tracerStart
+                if self.TracerOrigin == "Bottom" then
+                    tracerStart = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                elseif self.TracerOrigin == "Mouse" then
+                    tracerStart = UserInputService:GetMouseLocation()
+                else -- Top
+                    tracerStart = Vector2.new(Camera.ViewportSize.X/2, 0)
                 end
+                
+                tracerOutline.From = tracerStart
+                tracerOutline.To = Vector2.new(pos.X, pos.Y)
+                tracerOutline.Visible = true
+                
+                tracer.From = tracerStart
+                tracer.To = Vector2.new(pos.X, pos.Y)
+                tracer.Color = player.TeamColor.Color
+                tracer.Visible = true
+            else
+                tracer.Visible = false
+                tracerOutline.Visible = false
             end
         end)
+    end
+    
+    function ESP:RemoveObject(player)
+        local objects = self.Objects[player]
+        if not objects then return end
         
-        -- Disconnect update connection
+        for _, drawing in pairs(objects) do
+            drawing:Remove()
+        end
+        
         if self.Connections[player] then
             self.Connections[player]:Disconnect()
             self.Connections[player] = nil
@@ -535,223 +361,195 @@ local function startScript()
         
         self.Objects[player] = nil
     end
-
-    function ESP:UpdateESP(player, drawings)
-        if not player or not player.Parent then return end
-        if not drawings then return end
-        
-        -- Early exit conditions
-        if not self.Enabled or player == LocalPlayer then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        -- Character checks
-        local character = player.Character
-        local humanoid = character and character:FindFirstChild("Humanoid")
-        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-        local head = character and character:FindFirstChild("Head")
-        
-        if not (character and humanoid and rootPart and head) or humanoid.Health <= 0 then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        -- Team check
-        if self.TeamCheck and player.Team == LocalPlayer.Team then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        -- Distance check
-        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
-        if distance > self.MaxDistance then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        -- Screen position checks
-        local rootPos, rootVis = worldToViewportPoint(CurrentCamera, rootPart.Position)
-        if not rootVis then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        -- Calculate positions
-        local headPos = worldToViewportPoint(CurrentCamera, head.Position + HeadOff)
-        local legPos = worldToViewportPoint(CurrentCamera, rootPart.Position - LegOff)
-        
-        -- Update Box
-        if self.ShowBox then
-            local boxSize = Vector2.new(1000 / rootPos.Z, headPos.Y - legPos.Y)
-            local boxPosition = Vector2.new(rootPos.X - boxSize.X / 2, rootPos.Y - boxSize.Y / 2)
-            
-            drawings.BoxOutline.Size = boxSize
-            drawings.BoxOutline.Position = boxPosition
-            drawings.BoxOutline.Visible = true
-            
-            drawings.Box.Size = boxSize
-            drawings.Box.Position = boxPosition
-            drawings.Box.Color = player.TeamColor.Color
-            drawings.Box.Visible = true
-        else
-            drawings.Box.Visible = false
-            drawings.BoxOutline.Visible = false
-        end
-        
-        -- Update Health Bar
-        if self.ShowHealth then
-            local health = humanoid.Health / humanoid.MaxHealth
-            local barHeight = headPos.Y - legPos.Y
-            local barPosition = Vector2.new(rootPos.X - drawings.Box.Size.X/2 - 5, rootPos.Y - drawings.Box.Size.Y/2)
-            
-            drawings.HealthBarOutline.From = Vector2.new(barPosition.X, barPosition.Y)
-            drawings.HealthBarOutline.To = Vector2.new(barPosition.X, barPosition.Y + barHeight)
-            drawings.HealthBarOutline.Visible = true
-            
-            drawings.HealthBar.From = Vector2.new(barPosition.X, barPosition.Y + barHeight * (1 - health))
-            drawings.HealthBar.To = Vector2.new(barPosition.X, barPosition.Y + barHeight)
-            drawings.HealthBar.Color = Color3.new(1 - health, health, 0)
-            drawings.HealthBar.Visible = true
-        else
-            drawings.HealthBar.Visible = false
-            drawings.HealthBarOutline.Visible = false
-        end
-        
-        -- Update Name
-        if self.ShowName then
-            drawings.Name.Position = Vector2.new(rootPos.X, rootPos.Y - drawings.Box.Size.Y/2 - 15)
-            drawings.Name.Text = player.Name
-            drawings.Name.Color = player.TeamColor.Color
-            drawings.Name.Visible = true
-        else
-            drawings.Name.Visible = false
-        end
-        
-        -- Update Distance
-        if self.ShowDistance then
-            drawings.Distance.Position = Vector2.new(rootPos.X, rootPos.Y + drawings.Box.Size.Y/2 + 5)
-            drawings.Distance.Text = string.format("[%dm]", math.floor(distance))
-            drawings.Distance.Color = player.TeamColor.Color
-            drawings.Distance.Visible = true
-        else
-            drawings.Distance.Visible = false
-        end
-        
-        -- Update Tracer
-        if self.ShowTracer then
-            local tracerStart
-            if self.TracerOrigin == "Bottom" then
-                tracerStart = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-            elseif self.TracerOrigin == "Mouse" then
-                tracerStart = UserInputService:GetMouseLocation()
-            else -- Top
-                tracerStart = Vector2.new(Camera.ViewportSize.X/2, 0)
-            end
-            
-            drawings.TracerOutline.From = tracerStart
-            drawings.TracerOutline.To = Vector2.new(rootPos.X, rootPos.Y)
-            drawings.TracerOutline.Visible = true
-            
-            drawings.Tracer.From = tracerStart
-            drawings.Tracer.To = Vector2.new(rootPos.X, rootPos.Y)
-            drawings.Tracer.Color = player.TeamColor.Color
-            drawings.Tracer.Visible = true
-        else
-            drawings.Tracer.Visible = false
-            drawings.TracerOutline.Visible = false
-        end
-    end
-
-    function ESP:ToggleDrawings(drawings, visible)
-        if not drawings then return end
-        
-        safecall(function()
-            for _, drawing in pairs(drawings) do
-                if drawing and drawing.Visible ~= nil then
-                    drawing.Visible = visible
-                end
-            end
-        end)
-    end
-
+    
     function ESP:Toggle(state)
-        self.Active = state
         self.Enabled = state
-        
-        -- Update visibility for all objects
-        for player, drawings in pairs(self.Objects) do
-            self:ToggleDrawings(drawings, state)
+    end
+    
+    -- Initialize ESP
+    for _, player in pairs(Players:GetChildren()) do
+        if player ~= LocalPlayer then
+            ESP:CreateObject(player)
         end
     end
-
-    -- Initialize ESP
-    ESP:Toggle(false) -- Start disabled
-    for _, player in pairs(Players:GetChildren()) do
-        ESP:CreateObject(player)
-    end
-
-    -- Player handling
+    
     Players.PlayerAdded:Connect(function(player)
         ESP:CreateObject(player)
     end)
-
+    
     Players.PlayerRemoving:Connect(function(player)
         ESP:RemoveObject(player)
     end)
-
-    -- Initialize variables
-    local aimbotActive = false
-    local lastToggleTime = 0
-    local TOGGLE_COOLDOWN = 0.3
-
-    -- Create UI first
-    local ui = UI.new()
-
+    
+    -- Create UI System
+    local UI = {}
+    
+    -- ... (rest of your UI code)
+    
     -- Create UI elements
-    local aimbotToggle = UI.createToggle("Enable Aimbot", ui.Pages.Aimbot, function(state)
+    local ui = UI.new()
+    
+    -- Aimbot Page
+    local aimbotPage = ui.Pages.Aimbot
+    
+    -- Main Aimbot Settings
+    local aimbotToggle = UI.createToggle("Enable Aimbot", aimbotPage, function(state)
         aimbotActive = state
-        createNotification("Aimbot: " .. (state and "Enabled" or "Disabled"))
     end)
-
-    local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
+    
+    local aimbotTeamCheckToggle = UI.createToggle("Team Check", aimbotPage, function(state)
+        aimbotTeamCheck = state
+    end)
+    
+    local aimbotVisibilityCheckToggle = UI.createToggle("Visibility Check", aimbotPage, function(state)
+        aimbotVisibilityCheck = state
+    end)
+    
+    -- Aimbot Targeting Section
+    UI.createLabel("Targeting", aimbotPage)
+    
+    local aimbotTargetModeDropdown = UI.createDropdown("Target Mode", aimbotPage, {"Distance", "Health", "Random"}, function(value)
+        aimbotTargetMode = value
+    end)
+    
+    local aimbotTargetPartDropdown = UI.createDropdown("Target Part", aimbotPage, {"Head", "HumanoidRootPart", "Torso"}, function(value)
+        aimbotTargetPart = value
+    end)
+    
+    -- Aimbot Behavior Section
+    UI.createLabel("Behavior", aimbotPage)
+    
+    local aimbotSilentToggle = UI.createToggle("Silent Aim", aimbotPage, function(state)
+        aimbotSilent = state
+    end)
+    
+    local aimbotAutoShootToggle = UI.createToggle("Auto Shoot", aimbotPage, function(state)
+        aimbotAutoShoot = state
+    end)
+    
+    local aimbotTriggerBotToggle = UI.createToggle("Trigger Bot", aimbotPage, function(state)
+        aimbotTriggerBot = state
+    end)
+    
+    local aimbotTriggerBotDelaySlider = UI.createSlider("Trigger Delay (ms)", aimbotPage, 0, 500, 0, function(value)
+        aimbotTriggerBotDelay = value / 1000
+    end)
+    
+    local aimbotAutoReloadToggle = UI.createToggle("Auto Reload", aimbotPage, function(state)
+        aimbotAutoReload = state
+    end)
+    
+    -- Aimbot Smoothing Section
+    UI.createLabel("Smoothing", aimbotPage)
+    
+    local aimbotSmoothingToggle = UI.createToggle("Use Smoothing", aimbotPage, function(state)
+        aimbotSmoothing = state
+    end)
+    
+    local aimbotSmoothingSlider = UI.createSlider("Smoothing Amount", aimbotPage, 1, 10, 2, function(value)
+        aimbotSmoothingAmount = value
+    end)
+    
+    -- Aimbot Prediction Section
+    UI.createLabel("Prediction", aimbotPage)
+    
+    local aimbotPredictionToggle = UI.createToggle("Enable Prediction", aimbotPage, function(state)
+        aimbotPrediction = state
+    end)
+    
+    local aimbotPredictionSlider = UI.createSlider("Prediction Amount", aimbotPage, 0, 1, 0.165, function(value)
+        aimbotPredictionAmount = value
+    end)
+    
+    -- Aimbot FOV Section
+    UI.createLabel("FOV", aimbotPage)
+    
+    local aimbotFOVToggle = UI.createToggle("Show FOV", aimbotPage, function(state)
+        showFOV = state
+        fovCircle.Visible = state
+    end)
+    
+    local aimbotFOVSlider = UI.createSlider("FOV Size", aimbotPage, 30, 800, 120, function(value)
+        fovSize = value
+        fovCircle.Radius = value
+    end)
+    
+    -- Aimbot Advanced Section
+    UI.createLabel("Advanced", aimbotPage)
+    
+    local aimbotWallbangToggle = UI.createToggle("Wallbang", aimbotPage, function(state)
+        aimbotWallbang = state
+    end)
+    
+    local aimbotJumpCheckToggle = UI.createToggle("Jump Check", aimbotPage, function(state)
+        aimbotJumpCheck = state
+    end)
+    
+    local aimbotDisableOnJumpToggle = UI.createToggle("Disable While Jumping", aimbotPage, function(state)
+        aimbotDisableOnJump = state
+    end)
+    
+    -- Visuals Page
+    local visualsPage = ui.Pages.Visuals
+    
+    -- ESP Settings
+    local espToggle = UI.createToggle("Enable ESP", visualsPage, function(state)
         ESP:Toggle(state)
     end)
-
-    local boxToggle = UI.createToggle("Show Boxes", ui.Pages.Visuals, function(state)
+    
+    local boxToggle = UI.createToggle("Show Boxes", visualsPage, function(state)
         ESP.ShowBox = state
     end)
-
-    local healthToggle = UI.createToggle("Show Health", ui.Pages.Visuals, function(state)
+    
+    local healthToggle = UI.createToggle("Show Health", visualsPage, function(state)
         ESP.ShowHealth = state
     end)
-
-    local nameToggle = UI.createToggle("Show Names", ui.Pages.Visuals, function(state)
+    
+    local nameToggle = UI.createToggle("Show Names", visualsPage, function(state)
         ESP.ShowName = state
     end)
-
-    local distanceToggle = UI.createToggle("Show Distance", ui.Pages.Visuals, function(state)
+    
+    local distanceToggle = UI.createToggle("Show Distance", visualsPage, function(state)
         ESP.ShowDistance = state
     end)
-
-    local tracerToggle = UI.createToggle("Show Tracers", ui.Pages.Visuals, function(state)
+    
+    local tracerToggle = UI.createToggle("Show Tracers", visualsPage, function(state)
         ESP.ShowTracer = state
     end)
-
-    local teamCheckToggle = UI.createToggle("Team Check", ui.Pages.Visuals, function(state)
+    
+    local teamCheckToggle = UI.createToggle("Team Check", visualsPage, function(state)
         ESP.TeamCheck = state
     end)
-
-    local tracerOriginDropdown = UI.createDropdown("Tracer Origin", ui.Pages.Visuals, {"Bottom", "Mouse", "Top"}, function(value)
+    
+    local tracerOriginDropdown = UI.createDropdown("Tracer Origin", visualsPage, {"Bottom", "Mouse", "Top"}, function(value)
         ESP.TracerOrigin = value
     end)
-
-    local distanceSlider = UI.createSlider("ESP Distance", ui.Pages.Visuals, 100, 2000, 1000, function(value)
+    
+    local distanceSlider = UI.createSlider("ESP Distance", visualsPage, 100, 2000, 1000, function(value)
         ESP.MaxDistance = value
     end)
-
+    
     -- Set initial states
     aimbotToggle.SetState(false)
+    aimbotTeamCheckToggle.SetState(true)
+    aimbotVisibilityCheckToggle.SetState(true)
+    aimbotSmoothingToggle.SetState(true)
+    aimbotSmoothingSlider.SetValue(2)
+    aimbotFOVToggle.SetState(true)
+    aimbotFOVSlider.SetValue(120)
+    aimbotTargetPartDropdown.SetValue("Head")
+    aimbotTargetModeDropdown.SetValue("Distance")
+    aimbotPredictionToggle.SetState(true)
+    aimbotPredictionSlider.SetValue(0.165)
+    aimbotSilentToggle.SetState(false)
+    aimbotAutoShootToggle.SetState(false)
+    aimbotTriggerBotToggle.SetState(false)
+    aimbotTriggerBotDelaySlider.SetValue(0)
+    aimbotWallbangToggle.SetState(false)
+    aimbotJumpCheckToggle.SetState(false)
+    aimbotDisableOnJumpToggle.SetState(false)
+    aimbotAutoReloadToggle.SetState(false)
+    
     espToggle.SetState(false)
     boxToggle.SetState(true)
     healthToggle.SetState(true)
@@ -761,7 +559,111 @@ local function startScript()
     teamCheckToggle.SetState(true)
     tracerOriginDropdown.SetValue("Bottom")
     distanceSlider.SetValue(1000)
+    
+    -- Enhanced Aimbot UI Elements
+    local aimbotPage = ui.Pages.Aimbot
 
+    local aimbotToggle = UI.createToggle("Enable Aimbot", aimbotPage, function(state)
+        aimbotActive = state
+    end)
+
+    local aimbotSilentToggle = UI.createToggle("Silent Aim", aimbotPage, function(state)
+        aimbotSilent = state
+    end)
+
+    local aimbotPredictionToggle = UI.createToggle("Prediction", aimbotPage, function(state)
+        aimbotPrediction = state
+    end)
+
+    local aimbotPredictionSlider = UI.createSlider("Prediction Amount", aimbotPage, 0, 1, 0.165, function(value)
+        aimbotPredictionAmount = value
+    end)
+
+    local aimbotWallbangToggle = UI.createToggle("Wallbang", aimbotPage, function(state)
+        aimbotWallbang = state
+    end)
+
+    local aimbotAutoShootToggle = UI.createToggle("Auto Shoot", aimbotPage, function(state)
+        aimbotAutoShoot = state
+    end)
+
+    local aimbotTriggerBotToggle = UI.createToggle("Trigger Bot", aimbotPage, function(state)
+        aimbotTriggerBot = state
+    end)
+
+    local aimbotTriggerBotDelaySlider = UI.createSlider("Trigger Delay (ms)", aimbotPage, 0, 500, 0, function(value)
+        aimbotTriggerBotDelay = value / 1000
+    end)
+
+    local aimbotJumpCheckToggle = UI.createToggle("Jump Check", aimbotPage, function(state)
+        aimbotJumpCheck = state
+    end)
+
+    local aimbotDisableOnJumpToggle = UI.createToggle("Disable While Jumping", aimbotPage, function(state)
+        aimbotDisableOnJump = state
+    end)
+
+    local aimbotTargetModeDropdown = UI.createDropdown("Target Mode", aimbotPage, {"Distance", "Health", "Random"}, function(value)
+        aimbotTargetMode = value
+    end)
+    
+    -- Enhanced Aimbot Update Logic
+    RunService.RenderStepped:Connect(function()
+        if showFOV then
+            fovCircle.Position = UserInputService:GetMouseLocation()
+        end
+        
+        if not aimbotActive then return end
+        if aimbotDisableOnJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and 
+           math.abs(LocalPlayer.Character.Humanoid.FloorMaterial.Name) == "Air" then return end
+        
+        local target = getTargetPlayer()
+        if not target then return end
+        
+        local mousePos = UserInputService:GetMouseLocation()
+        local predictedPos = predictPosition(target.Part, 1000)
+        local pos = Camera:WorldToViewportPoint(predictedPos)
+        local aimPos = Vector2.new(pos.X, pos.Y)
+        
+        -- Handle different aim modes
+        if aimbotSilent then
+            -- Silent aim implementation would go here
+            -- This requires game-specific mouse event hooking
+        else
+            if aimbotSmoothing then
+                mousePos = mousePos:Lerp(aimPos, 1 / aimbotSmoothingAmount)
+            else
+                mousePos = aimPos
+            end
+            
+            mousemoverel(mousePos.X - UserInputService:GetMouseLocation().X, mousePos.Y - UserInputService:GetMouseLocation().Y)
+        end
+        
+        -- Handle auto shooting
+        if aimbotAutoShoot and tick() - lastShotTime > SHOT_COOLDOWN then
+            mouse1press()
+            wait()
+            mouse1release()
+            lastShotTime = tick()
+        end
+        
+        -- Handle trigger bot
+        if aimbotTriggerBot then
+            local ray = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+            rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+            
+            local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, rayParams)
+            if result and result.Instance and result.Instance:IsDescendantOf(target.Character) then
+                wait(aimbotTriggerBotDelay)
+                mouse1press()
+                wait()
+                mouse1release()
+            end
+        end
+    end)
+    
     -- Add toggle keys
     UserInputService.InputBegan:Connect(function(input)
         if input.KeyCode == Enum.KeyCode.RightShift then
@@ -771,32 +673,21 @@ local function startScript()
                 lastToggleTime = currentTime
             end
         elseif input.KeyCode == Enum.KeyCode.E then
-            aimbotToggle.SetState(not aimbotToggle.GetState())
+            aimbotToggle.SetState(not aimbotActive)
         end
     end)
-
+    
     -- Cleanup handler
     CoreGui.ChildRemoved:Connect(function(child)
         if child.Name == "TOSIndustriesV1" then
-            -- Cleanup all ESP objects
             for player, _ in pairs(ESP.Objects) do
                 ESP:RemoveObject(player)
             end
-            
-            -- Cleanup all connections
-            for _, connection in pairs(ESP.Connections) do
-                if connection then
-                    connection:Disconnect()
-                end
-            end
-            
-            -- Clear tables
-            ESP.Objects = {}
-            ESP.Connections = {}
-            ESP:Toggle(false)
+            ESP.Enabled = false
+            fovCircle:Remove()
         end
     end)
-
+    
     return true
 end
 
