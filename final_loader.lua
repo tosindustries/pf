@@ -421,192 +421,251 @@ local function startScript()
     -- ESP System
     local ESP = {
         Enabled = false,
-        Boxes = true,
-        Names = true,
-        Health = true,
-        Distance = true,
+        BoxEnabled = true,
+        SkeletonEnabled = true,
+        NameEnabled = true,
+        HealthEnabled = true,
         TeamCheck = true,
-        Objects = {}
+        BoxColor = Color3.fromRGB(255, 255, 255),
+        SkeletonColor = Color3.fromRGB(255, 255, 255),
+        TextColor = Color3.fromRGB(255, 255, 255),
+        TextSize = 14,
+        MaxDistance = 1000,
+        Players = {},
+        Connections = {}
     }
     
-    -- Create ESP Object
-    function ESP:CreateObject(player)
-        if self.Objects[player] then return end
+    function ESP:CreateDrawings()
+        local player = {}
+        player.Box = Drawing.new("Square")
+        player.Box.Thickness = 1
+        player.Box.Filled = false
+        player.Box.Visible = false
+        player.Box.Color = self.BoxColor
+        player.Box.Transparency = 1
         
-        local box = Drawing.new("Square")
-        box.Visible = false
-        box.Color = Color3.fromRGB(255, 255, 255)
-        box.Thickness = 1
-        box.Transparency = 1
-        box.Filled = false
+        player.Name = Drawing.new("Text")
+        player.Name.Center = true
+        player.Name.Size = self.TextSize
+        player.Name.Outline = true
+        player.Name.Visible = false
+        player.Name.Color = self.TextColor
         
-        local name = Drawing.new("Text")
-        name.Visible = false
-        name.Color = Color3.fromRGB(255, 255, 255)
-        name.Size = 13
-        name.Center = true
-        name.Outline = true
-        name.OutlineColor = Color3.fromRGB(0, 0, 0)
-        name.Text = player.Name
+        player.Health = Drawing.new("Text")
+        player.Health.Center = true
+        player.Health.Size = self.TextSize
+        player.Health.Outline = true
+        player.Health.Visible = false
+        player.Health.Color = self.TextColor
         
-        local distance = Drawing.new("Text")
-        distance.Visible = false
-        distance.Color = Color3.fromRGB(255, 255, 255)
-        distance.Size = 13
-        distance.Center = true
-        distance.Outline = true
-        distance.OutlineColor = Color3.fromRGB(0, 0, 0)
-        
-        local healthBar = Drawing.new("Square")
-        healthBar.Visible = false
-        healthBar.Color = Color3.fromRGB(0, 255, 0)
-        healthBar.Thickness = 1
-        healthBar.Filled = true
-        healthBar.Transparency = 1
-        
-        local healthBarOutline = Drawing.new("Square")
-        healthBarOutline.Visible = false
-        healthBarOutline.Color = Color3.fromRGB(0, 0, 0)
-        healthBarOutline.Thickness = 1
-        healthBarOutline.Filled = false
-        healthBarOutline.Transparency = 1
-        
-        self.Objects[player] = {
-            Box = box,
-            Name = name,
-            Distance = distance,
-            HealthBar = healthBar,
-            HealthBarOutline = healthBarOutline,
-            Player = player,
-            Connection = RunService.RenderStepped:Connect(function()
-                self:UpdateObject(player)
-            end)
+        player.Skeleton = {}
+        local SkeletonPoints = {
+            "Head-UpperTorso",
+            "UpperTorso-LowerTorso",
+            "UpperTorso-LeftUpperArm",
+            "LeftUpperArm-LeftLowerArm",
+            "UpperTorso-RightUpperArm",
+            "RightUpperArm-RightLowerArm",
+            "LowerTorso-LeftUpperLeg",
+            "LeftUpperLeg-LeftLowerLeg",
+            "LowerTorso-RightUpperLeg",
+            "RightUpperLeg-RightLowerLeg"
         }
-    end
-    
-    function ESP:RemoveObject(player)
-        local object = self.Objects[player]
-        if not object then return end
         
-        object.Box:Remove()
-        object.Name:Remove()
-        object.Distance:Remove()
-        object.HealthBar:Remove()
-        object.HealthBarOutline:Remove()
-        object.Connection:Disconnect()
-        
-        self.Objects[player] = nil
-    end
-    
-    function ESP:UpdateObject(player)
-        local object = self.Objects[player]
-        if not object then return end
-        
-        if not self.Enabled or not player or not player.Parent then
-            object.Box.Visible = false
-            object.Name.Visible = false
-            object.Distance.Visible = false
-            object.HealthBar.Visible = false
-            object.HealthBarOutline.Visible = false
-            return
+        for _, point in pairs(SkeletonPoints) do
+            local line = Drawing.new("Line")
+            line.Thickness = 1
+            line.Visible = false
+            line.Color = self.SkeletonColor
+            player.Skeleton[point] = line
         end
         
+        return player
+    end
+    
+    function ESP:GetCharacter(player)
         local character = player.Character
-        local humanoid = character and character:FindFirstChild("Humanoid")
-        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        if not character then return nil end
         
-        if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
-            object.Box.Visible = false
-            object.Name.Visible = false
-            object.Distance.Visible = false
-            object.HealthBar.Visible = false
-            object.HealthBarOutline.Visible = false
-            return
+        local humanoid = character:FindFirstChild("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        
+        if not humanoid or not rootPart then return nil end
+        if humanoid.Health <= 0 then return nil end
+        
+        return character, humanoid, rootPart
+    end
+    
+    function ESP:IsTeammate(player)
+        if not self.TeamCheck then return false end
+        return player.Team == LocalPlayer.Team
+    end
+    
+    function ESP:GetBoxPositions(character)
+        local cframe = character:GetBoundingBox()
+        local size = cframe.Size
+        local position = cframe.Position
+        
+        local screenPosition, onScreen = Camera:WorldToViewportPoint(position)
+        if not onScreen then return nil end
+        
+        local sizeX = math.abs(Camera:WorldToViewportPoint(position + Vector3.new(size.X/2, 0, 0)).X - Camera:WorldToViewportPoint(position - Vector3.new(size.X/2, 0, 0)).X)
+        local sizeY = math.abs(Camera:WorldToViewportPoint(position + Vector3.new(0, size.Y/2, 0)).Y - Camera:WorldToViewportPoint(position - Vector3.new(0, size.Y/2, 0)).Y)
+        
+        return Vector2.new(screenPosition.X - sizeX/2, screenPosition.Y - sizeY/2), Vector2.new(sizeX, sizeY)
+    end
+    
+    function ESP:UpdateESP()
+        for player, drawings in pairs(self.Players) do
+            if not player or not player.Parent then
+                self:RemovePlayer(player)
+                continue
+            end
+
+            local character, humanoid, rootPart = self:GetCharacter(player)
+            if not character or self:IsTeammate(player) then
+                self:ToggleDrawings(drawings, false)
+                continue
+            end
+
+            local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+            if distance > self.MaxDistance then
+                self:ToggleDrawings(drawings, false)
+                continue
+            end
+
+            local boxPos, boxSize = self:GetBoxPositions(character)
+            if not boxPos then
+                self:ToggleDrawings(drawings, false)
+                continue
+            end
+
+            -- Update Box
+            if self.BoxEnabled then
+                drawings.Box.Size = boxSize
+                drawings.Box.Position = boxPos
+                drawings.Box.Visible = true
+            else
+                drawings.Box.Visible = false
+            end
+
+            -- Update Name
+            if self.NameEnabled then
+                drawings.Name.Position = Vector2.new(boxPos.X + boxSize.X/2, boxPos.Y - 20)
+                drawings.Name.Text = string.format("%s [%d]", player.Name, math.floor(distance))
+                drawings.Name.Visible = true
+            else
+                drawings.Name.Visible = false
+            end
+
+            -- Update Health
+            if self.HealthEnabled then
+                drawings.Health.Position = Vector2.new(boxPos.X - 20, boxPos.Y + boxSize.Y/2)
+                drawings.Health.Text = string.format("%d HP", math.floor(humanoid.Health))
+                drawings.Health.Visible = true
+                drawings.Health.Color = Color3.fromHSV(humanoid.Health/humanoid.MaxHealth * 0.3, 1, 1)
+            else
+                drawings.Health.Visible = false
+            end
+
+            -- Update Skeleton
+            if self.SkeletonEnabled then
+                self:UpdateSkeleton(character, drawings.Skeleton)
+            else
+                for _, line in pairs(drawings.Skeleton) do
+                    line.Visible = false
+                end
+            end
         end
-        
-        if self.TeamCheck and player.Team == LocalPlayer.Team then
-            object.Box.Visible = false
-            object.Name.Visible = false
-            object.Distance.Visible = false
-            object.HealthBar.Visible = false
-            object.HealthBarOutline.Visible = false
-            return
+    end
+    
+    function ESP:UpdateSkeleton(character, skeletonDrawings)
+        local function getPartPosition(part)
+            if not part then return nil end
+            local position = Camera:WorldToViewportPoint(part.Position)
+            if position.Z < 0 then return nil end
+            return Vector2.new(position.X, position.Y)
         end
-        
-        local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
-        if not onScreen then
-            object.Box.Visible = false
-            object.Name.Visible = false
-            object.Distance.Visible = false
-            object.HealthBar.Visible = false
-            object.HealthBarOutline.Visible = false
-            return
-        end
-        
-        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
-        local size = math.clamp(1 / (distance * 0.2), 0.1, 1)
-        local boxSize = Vector2.new(1000 * size, 1500 * size)
-        local boxPosition = Vector2.new(pos.X - boxSize.X / 2, pos.Y - boxSize.Y / 2)
-        
-        -- Update Box
-        if self.Boxes then
-            object.Box.Size = boxSize
-            object.Box.Position = boxPosition
-            object.Box.Visible = true
-        else
-            object.Box.Visible = false
-        end
-        
-        -- Update Name
-        if self.Names then
-            object.Name.Position = Vector2.new(pos.X, boxPosition.Y - 15)
-            object.Name.Visible = true
-        else
-            object.Name.Visible = false
-        end
-        
-        -- Update Distance
-        if self.Distance then
-            object.Distance.Text = string.format("[%d]", math.floor(distance))
-            object.Distance.Position = Vector2.new(pos.X, boxPosition.Y + boxSize.Y + 5)
-            object.Distance.Visible = true
-        else
-            object.Distance.Visible = false
-        end
-        
-        -- Update Health Bar
-        if self.Health then
-            local healthPercent = humanoid.Health / humanoid.MaxHealth
-            local barHeight = boxSize.Y
-            local barPosition = Vector2.new(boxPosition.X - 7, boxPosition.Y)
+
+        for connection, line in pairs(skeletonDrawings) do
+            local part1, part2 = unpack(connection:split("-"))
+            local pos1 = getPartPosition(character:FindFirstChild(part1))
+            local pos2 = getPartPosition(character:FindFirstChild(part2))
             
-            object.HealthBarOutline.Size = Vector2.new(4, barHeight)
-            object.HealthBarOutline.Position = barPosition
-            object.HealthBarOutline.Visible = true
-            
-            object.HealthBar.Size = Vector2.new(2, barHeight * healthPercent)
-            object.HealthBar.Position = Vector2.new(barPosition.X + 1, barPosition.Y + barHeight * (1 - healthPercent))
-            object.HealthBar.Color = Color3.fromRGB(255 - 255 * healthPercent, 255 * healthPercent, 0)
-            object.HealthBar.Visible = true
-        else
-            object.HealthBarOutline.Visible = false
-            object.HealthBar.Visible = false
+            if pos1 and pos2 then
+                line.Visible = true
+                line.From = pos1
+                line.To = pos2
+            else
+                line.Visible = false
+            end
         end
+    end
+    
+    function ESP:ToggleDrawings(drawings, visible)
+        if not self.Enabled then visible = false end
+        
+        if drawings.Box then
+            drawings.Box.Visible = visible and self.BoxEnabled
+        end
+        if drawings.Name then
+            drawings.Name.Visible = visible and self.NameEnabled
+        end
+        if drawings.Health then
+            drawings.Health.Visible = visible and self.HealthEnabled
+        end
+        if drawings.Skeleton then
+            for _, line in pairs(drawings.Skeleton) do
+                line.Visible = visible and self.SkeletonEnabled
+            end
+        end
+    end
+    
+    function ESP:AddPlayer(player)
+        if self.Players[player] then return end
+        self.Players[player] = self:CreateDrawings()
+    end
+    
+    function ESP:RemovePlayer(player)
+        local drawings = self.Players[player]
+        if not drawings then return end
+        
+        if drawings.Box then 
+            if type(drawings.Box) == "table" then
+                if drawings.Box.Outline then drawings.Box.Outline:Remove() end
+                if drawings.Box.Main then drawings.Box.Main:Remove() end
+            else
+                drawings.Box:Remove() 
+            end
+        end
+        if drawings.Name then drawings.Name:Remove() end
+        if drawings.Health then drawings.Health:Remove() end
+        if drawings.Skeleton then
+            for _, line in pairs(drawings.Skeleton) do
+                if type(line) == "table" and line.Line then
+                    line.Line:Remove()
+                elseif type(line) == "userdata" then
+                    line:Remove()
+                end
+            end
+        end
+        
+        self.Players[player] = nil
     end
     
     -- Initialize ESP
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            ESP:CreateObject(player)
+            ESP:AddPlayer(player)
         end
     end
     
     Players.PlayerAdded:Connect(function(player)
-        ESP:CreateObject(player)
+        ESP:AddPlayer(player)
     end)
     
     Players.PlayerRemoving:Connect(function(player)
-        ESP:RemoveObject(player)
+        ESP:RemovePlayer(player)
     end)
     
     -- Update FOV circle position
@@ -710,12 +769,13 @@ local function startScript()
     
     -- Main Loop
     RunService:BindToRenderStep("ESP_Aimbot", Enum.RenderPriority.Camera.Value + 1, function()
-        ESP:Update()
-        Aimbot:Update()
+        if ESP.Enabled then
+            ESP:UpdateESP()
+        end
         
-        -- Update FOV Circle
-        if Aimbot.Enabled then
-            fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        -- Update FOV Circle and Snapline
+        if Aimbot.Enabled and Aimbot.ShowFOV then
+            fovCircle.Position = UserInputService:GetMouseLocation()
             fovCircle.Radius = Aimbot.FOV
             fovCircle.Visible = true
             
@@ -726,12 +786,14 @@ local function startScript()
                 if part then
                     local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
                     if onScreen then
-                        snapLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                        snapLine.From = UserInputService:GetMouseLocation()
                         snapLine.To = Vector2.new(pos.X, pos.Y)
-                        snapLine.Visible = true
+                        snapLine.Visible = true and Aimbot.ShowFOV -- Only show if FOV circle is visible
                     else
                         snapLine.Visible = false
                     end
+                else
+                    snapLine.Visible = false
                 end
             else
                 snapLine.Visible = false
@@ -817,6 +879,51 @@ local function startScript()
         
         return closestPlayer
     end
+    
+    -- Create Visuals Tab UI elements
+    local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
+        ESP.Enabled = state
+        if not state then
+            for _, drawings in pairs(ESP.Players) do
+                ESP:ToggleDrawings(drawings, false)
+            end
+        end
+    end)
+    
+    local boxesToggle = UI.createToggle("Show Boxes", ui.Pages.Visuals, function(state)
+        ESP.BoxEnabled = state
+    end)
+    
+    local namesToggle = UI.createToggle("Show Names", ui.Pages.Visuals, function(state)
+        ESP.NameEnabled = state
+    end)
+    
+    local healthToggle = UI.createToggle("Show Health", ui.Pages.Visuals, function(state)
+        ESP.HealthEnabled = state
+    end)
+    
+    local skeletonToggle = UI.createToggle("Show Skeleton", ui.Pages.Visuals, function(state)
+        ESP.SkeletonEnabled = state
+    end)
+    
+    local espTeamCheckToggle = UI.createToggle("Team Check", ui.Pages.Visuals, function(state)
+        ESP.TeamCheck = state
+    end)
+    
+    -- Set initial states for ESP
+    espToggle.SetState(false)
+    boxesToggle.SetState(true)
+    namesToggle.SetState(true)
+    healthToggle.SetState(true)
+    skeletonToggle.SetState(true)
+    espTeamCheckToggle.SetState(true)
+    
+    -- Fix menu reopening with RightShift
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.RightShift then
+            ui.MainFrame.Visible = not ui.MainFrame.Visible
+        end
+    end)
     
     return true
 end
