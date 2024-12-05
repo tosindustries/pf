@@ -280,6 +280,8 @@ local function startScript()
     local fovSize = 120
     local lastShotTime = 0
     local SHOT_COOLDOWN = 0.1
+    local maxAimbotDistance = 1000
+    local antiRecoilEnabled = false
     
     -- FOV Circle
     local fovCircle = Drawing.new("Circle")
@@ -524,6 +526,14 @@ local function startScript()
         end
     })
     
+    BehaviorGroup:AddToggle("AntiRecoil", {
+        Text = "Anti-Recoil",
+        Default = false,
+        Callback = function(Value)
+            antiRecoilEnabled = Value
+        end
+    })
+    
     -- Smoothing Settings
     SmoothingGroup:AddToggle("Smoothing", {
         Text = "Use Smoothing",
@@ -612,6 +622,17 @@ local function startScript()
         Default = false,
         Callback = function(Value)
             aimbotDisableOnJump = Value
+        end
+    })
+    
+    AdvancedGroup:AddSlider("MaxDistance", {
+        Text = "Max Distance",
+        Default = 1000,
+        Min = 100,
+        Max = 10000,
+        Rounding = 0,
+        Callback = function(Value)
+            maxAimbotDistance = Value
         end
     })
     
@@ -876,8 +897,8 @@ local function startScript()
         if aimbotSilent and (method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRay" or method == "Raycast") and not checkcaller() then
             local target = getClosestPlayerToCursor()
             if target and target.Part then
-                -- Double check FOV
-                if not isWithinFOVCircle(target.ScreenPosition) then
+                -- Check FOV and distance
+                if not isWithinFOVCircle(target.ScreenPosition) or target.WorldDistance > maxAimbotDistance then
                     return oldNamecall(self, unpack(args))
                 end
                 
@@ -905,12 +926,12 @@ local function startScript()
         if aimbotSilent and not checkcaller() then
             if index == "Hit" or index == "Target" then
                 local target = getClosestPlayerToCursor()
-                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) then
+                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) and target.WorldDistance <= maxAimbotDistance then
                     return target.Part
                 end
             elseif index == "HitPos" then
                 local target = getClosestPlayerToCursor()
-                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) then
+                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) and target.WorldDistance <= maxAimbotDistance then
                     return target.Part.Position
                 end
             end
@@ -938,6 +959,10 @@ local function startScript()
             local part = character:FindFirstChild(aimbotTargetPart)
             if not part then continue end
 
+            -- Check distance
+            local worldDistance = (part.Position - Camera.CFrame.Position).Magnitude
+            if worldDistance > maxAimbotDistance then continue end
+
             local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
             if not onScreen then continue end
 
@@ -952,7 +977,8 @@ local function startScript()
                     Part = part,
                     Position = pos,
                     Distance = distance,
-                    ScreenPosition = screenPos
+                    ScreenPosition = screenPos,
+                    WorldDistance = worldDistance
                 }
                 shortestDistance = distance
             end
@@ -960,6 +986,28 @@ local function startScript()
 
         return closestPlayer
     end
+
+    -- Anti-recoil implementation
+    local oldNewIndex = nil
+    oldNewIndex = hookmetamethod(game, "__newindex", function(self, index, value)
+        if antiRecoilEnabled and not checkcaller() then
+            -- Common recoil properties
+            if index == "CFrame" and self == Camera then
+                return
+            end
+            
+            local loweredIndex = string.lower(tostring(index))
+            if string.find(loweredIndex, "recoil") or 
+               string.find(loweredIndex, "spread") or 
+               string.find(loweredIndex, "shake") or 
+               string.find(loweredIndex, "sway") or
+               string.find(loweredIndex, "kick") then
+                return
+            end
+        end
+        
+        return oldNewIndex(self, index, value)
+    end)
 
     -- Cleanup
     Library:OnUnload(function()
