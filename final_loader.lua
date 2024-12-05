@@ -278,9 +278,6 @@ local function startScript()
         TextOutline = true
     }
 
-    -- Create ESP Section
-    local ESPSection = VisualsTab:CreateSection("ESP Settings")
-
     -- Add ESP Toggles
     VisualsTab:AddToggle("Enable ESP", false, function(Value)
         ESPSettings.Enabled = Value
