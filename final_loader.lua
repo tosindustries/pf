@@ -11,8 +11,18 @@ local function startScript()
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
 
-    -- Load UI Library
-    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua"))()
+    -- Load UI Library (with pcall to handle loading errors)
+    local Library = nil
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet('https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua'))()
+    end)
+
+    if not success then
+        warn("Failed to load UI Library:", result)
+        return
+    end
+
+    Library = result
 
     -- Create Window
     local Window = Library:CreateWindow({
@@ -99,17 +109,24 @@ local function startScript()
     local function CreateESPObject(player)
         if not player or player == LocalPlayer then return end
         
-        local espObject = {
-            Player = player,
-            Box = Drawing.new("Square"),
-            BoxOutline = Drawing.new("Square"),
-            Name = Drawing.new("Text"),
-            Distance = Drawing.new("Text"),
-            HealthBar = Drawing.new("Square"),
-            HealthBarOutline = Drawing.new("Square"),
-            Tracer = Drawing.new("Line"),
-            TracerOutline = Drawing.new("Line")
-        }
+        local success, espObject = pcall(function()
+            return {
+                Player = player,
+                Box = Drawing.new("Square"),
+                BoxOutline = Drawing.new("Square"),
+                Name = Drawing.new("Text"),
+                Distance = Drawing.new("Text"),
+                HealthBar = Drawing.new("Square"),
+                HealthBarOutline = Drawing.new("Square"),
+                Tracer = Drawing.new("Line"),
+                TracerOutline = Drawing.new("Line")
+            }
+        end)
+        
+        if not success then
+            warn("Failed to create ESP object:", espObject)
+            return nil
+        end
         
         -- Box Settings
         espObject.Box.Thickness = ESPSettings.BoxThickness
@@ -239,76 +256,86 @@ local function startScript()
         local color = ESPSettings.TeamColor and player.TeamColor.Color or Color3.new(1, 1, 1)
         
         -- Update Box
-        if ESPSettings.ShowBox then
-            espObject.Box.Size = boxSize
-            espObject.Box.Position = boxPosition
-            espObject.Box.Color = color
-            espObject.Box.Visible = true
-            
-            espObject.BoxOutline.Size = boxSize
-            espObject.BoxOutline.Position = boxPosition
-            espObject.BoxOutline.Visible = true
-        else
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-        end
+        pcall(function()
+            if ESPSettings.ShowBox then
+                espObject.Box.Size = boxSize
+                espObject.Box.Position = boxPosition
+                espObject.Box.Color = color
+                espObject.Box.Visible = true
+                
+                espObject.BoxOutline.Size = boxSize
+                espObject.BoxOutline.Position = boxPosition
+                espObject.BoxOutline.Visible = true
+            else
+                espObject.Box.Visible = false
+                espObject.BoxOutline.Visible = false
+            end
+        end)
         
         -- Update Name
-        if ESPSettings.ShowName then
-            espObject.Name.Text = player.Name
-            espObject.Name.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y - 16)
-            espObject.Name.Color = color
-            espObject.Name.Visible = true
-        else
-            espObject.Name.Visible = false
-        end
+        pcall(function()
+            if ESPSettings.ShowName then
+                espObject.Name.Text = player.Name
+                espObject.Name.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y - 16)
+                espObject.Name.Color = color
+                espObject.Name.Visible = true
+            else
+                espObject.Name.Visible = false
+            end
+        end)
         
         -- Update Distance
-        if ESPSettings.ShowDistance then
-            espObject.Distance.Text = string.format("%.0f studs", distance)
-            espObject.Distance.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
-            espObject.Distance.Color = color
-            espObject.Distance.Visible = true
-        else
-            espObject.Distance.Visible = false
-        end
+        pcall(function()
+            if ESPSettings.ShowDistance then
+                espObject.Distance.Text = string.format("%.0f studs", distance)
+                espObject.Distance.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
+                espObject.Distance.Color = color
+                espObject.Distance.Visible = true
+            else
+                espObject.Distance.Visible = false
+            end
+        end)
         
         -- Update Health Bar
-        if ESPSettings.ShowHealth then
-            local healthPercent = health / maxHealth
-            local barSize = Vector2.new(2, boxSize.Y * healthPercent)
-            local barPosition = Vector2.new(boxPosition.X - 5, boxPosition.Y + boxSize.Y * (1 - healthPercent))
-            
-            espObject.HealthBar.Size = barSize
-            espObject.HealthBar.Position = barPosition
-            espObject.HealthBar.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
-            espObject.HealthBar.Visible = true
-            
-            espObject.HealthBarOutline.Size = Vector2.new(4, boxSize.Y)
-            espObject.HealthBarOutline.Position = Vector2.new(boxPosition.X - 6, boxPosition.Y)
-            espObject.HealthBarOutline.Visible = true
-        else
-            espObject.HealthBar.Visible = false
-            espObject.HealthBarOutline.Visible = false
-        end
+        pcall(function()
+            if ESPSettings.ShowHealth then
+                local healthPercent = health / maxHealth
+                local barSize = Vector2.new(2, boxSize.Y * healthPercent)
+                local barPosition = Vector2.new(boxPosition.X - 5, boxPosition.Y + boxSize.Y * (1 - healthPercent))
+                
+                espObject.HealthBar.Size = barSize
+                espObject.HealthBar.Position = barPosition
+                espObject.HealthBar.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
+                espObject.HealthBar.Visible = true
+                
+                espObject.HealthBarOutline.Size = Vector2.new(4, boxSize.Y)
+                espObject.HealthBarOutline.Position = Vector2.new(boxPosition.X - 6, boxPosition.Y)
+                espObject.HealthBarOutline.Visible = true
+            else
+                espObject.HealthBar.Visible = false
+                espObject.HealthBarOutline.Visible = false
+            end
+        end)
         
         -- Update Tracer
-        if ESPSettings.ShowTracer then
-            local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-            local tracerStart = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
-            
-            espObject.Tracer.From = screenCenter
-            espObject.Tracer.To = tracerStart
-            espObject.Tracer.Color = color
-            espObject.Tracer.Visible = true
-            
-            espObject.TracerOutline.From = screenCenter
-            espObject.TracerOutline.To = tracerStart
-            espObject.TracerOutline.Visible = true
-        else
-            espObject.Tracer.Visible = false
-            espObject.TracerOutline.Visible = false
-        end
+        pcall(function()
+            if ESPSettings.ShowTracer then
+                local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+                local tracerStart = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
+                
+                espObject.Tracer.From = screenCenter
+                espObject.Tracer.To = tracerStart
+                espObject.Tracer.Color = color
+                espObject.Tracer.Visible = true
+                
+                espObject.TracerOutline.From = screenCenter
+                espObject.TracerOutline.To = tracerStart
+                espObject.TracerOutline.Visible = true
+            else
+                espObject.Tracer.Visible = false
+                espObject.TracerOutline.Visible = false
+            end
+        end)
     end
 
     -- Update all ESP Objects
@@ -426,14 +453,19 @@ local function startScript()
             ESPSettings.TextSize = Value
             for _, espObject in pairs(ESPObjects) do
                 if espObject.Name and espObject.Distance then
-                    espObject.Name.Size = Value
-                    espObject.Distance.Size = Value
+                    pcall(function()
+                        espObject.Name.Size = Value
+                        espObject.Distance.Size = Value
+                    end)
                 end
             end
         end
     })
 
-    Library:Notify("Script loaded successfully!", 5)
+    -- Notify on load
+    pcall(function()
+        Library:Notify("Script loaded successfully!", 5)
+    end)
 
     return true
 end
