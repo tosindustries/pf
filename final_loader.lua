@@ -16,24 +16,48 @@ local Colors = {
     DarkText = Color3.fromRGB(150, 150, 150)
 }
 
--- Utility Functions
+-- Improved PF Character Detection
 local function GetPFCharacter(player)
     if not player then return nil end
-    local char = player.Character
-    if not char then return nil end
     
-    -- Handle Phantom Forces character system
-    local torso = char:FindFirstChild("Torso")
-    if not torso then return nil end
+    -- Get character from Phantom Forces
+    local success, character = pcall(function()
+        -- First try to get character directly
+        local char = player.Character
+        if char and char:FindFirstChild("Torso") then return char end
+        
+        -- If that fails, try to get it from the workspace
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Torso") then
+                local humanoid = obj:FindFirstChild("Humanoid")
+                if humanoid and humanoid:GetAttribute("Player") == player then
+                    return obj
+                end
+            end
+        end
+        
+        return nil
+    end)
     
-    return char
+    if not success or not character then return nil end
+    return character
 end
 
 local function GetPFHealth(character)
     if not character then return 0, 100 end
+    
     local humanoid = character:FindFirstChild("Humanoid")
     if not humanoid then return 0, 100 end
-    return humanoid.Health, humanoid.MaxHealth
+    
+    local health = humanoid.Health
+    local maxHealth = humanoid.MaxHealth
+    
+    -- Ensure we have valid numbers
+    if type(health) ~= "number" or type(maxHealth) ~= "number" then
+        return 0, 100
+    end
+    
+    return health, maxHealth
 end
 
 -- ESP Settings
@@ -69,24 +93,18 @@ local AimbotSettings = {
     FOVThickness = 1,
     FOVTransparency = 0.7,
     MaxDistance = 1000,
-    PredictionEnabled = false,
-    PredictionAmount = 0.15,
     SilentAimEnabled = false,
-    TriggerBotEnabled = false,
-    TriggerBotDelay = 0.1,
-    AutoWallEnabled = false,
-    AutoWallMinDamage = 15,
-    TargetMode = "Distance", -- Distance, Health, Random
-    HitChance = 100,
-    UnlockOnDeath = true,
-    IgnoreInvisible = true,
-    TargetPriority = {
-        Head = true,
-        Torso = true,
-        Arms = false,
-        Legs = false
-    }
+    SilentAimHitChance = 100,
+    HitChance = 100
 }
+
+-- Create FOV Circle
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = AimbotSettings.FOVThickness
+FOVCircle.Color = AimbotSettings.FOVColor
+FOVCircle.Transparency = AimbotSettings.FOVTransparency
+FOVCircle.Filled = false
+FOVCircle.Visible = false
 
 -- Create Window
 local Window = Library:CreateWindow({
@@ -103,19 +121,32 @@ local Tabs = {
 }
 
 -- Combat Tab
-local AimbotGroup = Tabs.Combat:AddLeftGroupbox("Aimbot")
-local WeaponGroup = Tabs.Combat:AddRightGroupbox("Weapon")
+local AimbotMainGroup = Tabs.Combat:AddLeftGroupbox("Aimbot")
+local AimbotSettingsGroup = Tabs.Combat:AddRightGroupbox("Aimbot Settings")
+local SilentAimGroup = Tabs.Combat:AddLeftGroupbox("Silent Aim")
 
--- Aimbot Settings
-AimbotGroup:AddToggle("AimbotEnabled", {
+-- Main Aimbot Settings
+AimbotMainGroup:AddToggle("AimbotEnabled", {
     Text = "Enable Aimbot",
     Default = false,
     Callback = function(Value)
         AimbotSettings.Enabled = Value
+        if not Value then
+            FOVCircle.Visible = false
+        end
     end
 })
 
-AimbotGroup:AddToggle("TeamCheck", {
+AimbotMainGroup:AddToggle("ShowFOV", {
+    Text = "Show FOV",
+    Default = true,
+    Callback = function(Value)
+        AimbotSettings.ShowFOV = Value
+        FOVCircle.Visible = Value and AimbotSettings.Enabled
+    end
+})
+
+AimbotMainGroup:AddToggle("TeamCheck", {
     Text = "Team Check",
     Default = true,
     Callback = function(Value)
@@ -123,16 +154,8 @@ AimbotGroup:AddToggle("TeamCheck", {
     end
 })
 
-AimbotGroup:AddToggle("VisibilityCheck", {
-    Text = "Visibility Check",
-    Default = true,
-    Callback = function(Value)
-        AimbotSettings.VisibilityCheck = Value
-    end
-})
-
-AimbotGroup:AddDropdown("TargetPart", {
-    Values = {"Head", "Torso", "HumanoidRootPart"},
+AimbotMainGroup:AddDropdown("TargetPart", {
+    Values = {"Head", "Torso"},
     Default = 1,
     Multi = false,
     Text = "Target Part",
@@ -141,7 +164,8 @@ AimbotGroup:AddDropdown("TargetPart", {
     end
 })
 
-AimbotGroup:AddSlider("Smoothness", {
+-- Aimbot Settings
+AimbotSettingsGroup:AddSlider("Smoothness", {
     Text = "Smoothness",
     Default = 1,
     Min = 1,
@@ -152,7 +176,7 @@ AimbotGroup:AddSlider("Smoothness", {
     end
 })
 
-AimbotGroup:AddSlider("FOV", {
+AimbotSettingsGroup:AddSlider("FOV", {
     Text = "FOV",
     Default = 100,
     Min = 10,
@@ -163,20 +187,38 @@ AimbotGroup:AddSlider("FOV", {
     end
 })
 
--- Weapon Settings
-WeaponGroup:AddToggle("NoRecoil", {
-    Text = "No Recoil",
-    Default = false
+AimbotSettingsGroup:AddSlider("MaxDistance", {
+    Text = "Max Distance",
+    Default = 1000,
+    Min = 100,
+    Max = 5000,
+    Rounding = 0,
+    Callback = function(Value)
+        AimbotSettings.MaxDistance = Value
+    end
 })
 
-WeaponGroup:AddToggle("NoSpread", {
-    Text = "No Spread",
-    Default = false
+-- Silent Aim Settings
+SilentAimGroup:AddToggle("SilentAimEnabled", {
+    Text = "Silent Aim",
+    Default = false,
+    Tooltip = "Automatically redirect bullets to target",
+    Callback = function(Value)
+        AimbotSettings.SilentAimEnabled = Value
+    end
 })
 
-WeaponGroup:AddToggle("AutoShoot", {
-    Text = "Auto Shoot",
-    Default = false
+SilentAimGroup:AddSlider("SilentAimHitChance", {
+    Text = "Hit Chance",
+    Default = 100,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Suffix = "%",
+    Tooltip = "Chance for Silent Aim to hit",
+    Callback = function(Value)
+        AimbotSettings.SilentAimHitChance = Value
+    end
 })
 
 -- Visuals Tab
@@ -244,33 +286,6 @@ ESPSettingsGroup:AddSlider("TextSize", {
     Rounding = 0,
     Callback = function(Value)
         ESPSettings.TextSize = Value
-    end
-})
-
-ESPSettingsGroup:AddSlider("BoxThickness", {
-    Text = "Box Thickness",
-    Default = 1,
-    Min = 1,
-    Max = 5,
-    Rounding = 0,
-    Callback = function(Value)
-        ESPSettings.BoxThickness = Value
-    end
-})
-
-ESPSettingsGroup:AddColorPicker("BoxColor", {
-    Text = "Box Color",
-    Default = Color3.fromRGB(255, 255, 255),
-    Callback = function(Value)
-        ESPSettings.BoxColor = Value
-    end
-})
-
-ESPSettingsGroup:AddColorPicker("TracerColor", {
-    Text = "Tracer Color",
-    Default = Color3.fromRGB(255, 255, 255),
-    Callback = function(Value)
-        ESPSettings.TracerColor = Value
     end
 })
 
@@ -377,10 +392,10 @@ local function UpdateESP()
             continue
         end
         
-        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-        if not humanoidRootPart then continue end
+        local torso = character:FindFirstChild("Torso")
+        if not torso then continue end
         
-        local vector, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+        local vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
         if not onScreen then
             espObject.Box.Visible = false
             espObject.BoxOutline.Visible = false
@@ -391,7 +406,7 @@ local function UpdateESP()
             continue
         end
         
-        local distance = (Camera.CFrame.Position - humanoidRootPart.Position).Magnitude
+        local distance = (Camera.CFrame.Position - torso.Position).Magnitude
         if distance > ESPSettings.MaxDistance then
             espObject.Box.Visible = false
             espObject.BoxOutline.Visible = false
@@ -453,17 +468,6 @@ local function UpdateESP()
             espObject.Health.Visible = false
         end
         
-        -- Update Distance
-        if ESPSettings.ShowDistance then
-            espObject.Distance.Text = math.floor(distance) .. " studs"
-            espObject.Distance.Position = Vector2.new(vector.X, vector.Y + 25)
-            espObject.Distance.Color = ESPSettings.TextColor
-            espObject.Distance.Size = ESPSettings.TextSize
-            espObject.Distance.Visible = true
-        else
-            espObject.Distance.Visible = false
-        end
-        
         -- Update Tracer
         if ESPSettings.ShowTracer then
             espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
@@ -475,6 +479,99 @@ local function UpdateESP()
             espObject.Tracer.Visible = false
         end
     end
+end
+
+-- Get Target Function
+local function GetTarget()
+    local closest = {
+        Distance = math.huge,
+        Player = nil,
+        Part = nil
+    }
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        
+        if AimbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
+        
+        local character = GetPFCharacter(player)
+        if not character then continue end
+        
+        local targetPart = character:FindFirstChild(AimbotSettings.TargetPart)
+        if not targetPart then 
+            -- Fallback to Torso if target part not found
+            targetPart = character:FindFirstChild("Torso")
+            if not targetPart then continue end
+        end
+        
+        local screenPoint, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+        if not onScreen and not AimbotSettings.SilentAimEnabled then continue end
+        
+        local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
+        if distance > AimbotSettings.MaxDistance then continue end
+        
+        -- FOV Check (skip for silent aim if target is close enough)
+        if not AimbotSettings.SilentAimEnabled or distance > AimbotSettings.MaxDistance / 2 then
+            local screenPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+            local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            local fovDistance = (screenPosition - screenCenter).Magnitude
+            
+            if fovDistance > AimbotSettings.FOV then continue end
+        end
+        
+        -- Visibility Check
+        if AimbotSettings.VisibilityCheck then
+            local rayOrigin = Camera.CFrame.Position
+            local rayDirection = (targetPart.Position - rayOrigin).Unit
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycastResult = workspace:Raycast(rayOrigin, rayDirection * distance, raycastParams)
+            if raycastResult then continue end
+        end
+        
+        -- Update closest target
+        if distance < closest.Distance then
+            closest.Distance = distance
+            closest.Player = player
+            closest.Part = targetPart
+        end
+    end
+    
+    return closest
+end
+
+-- Update FOV Circle
+local function UpdateFOVCircle()
+    if not AimbotSettings.ShowFOV or not AimbotSettings.Enabled then
+        FOVCircle.Visible = false
+        return
+    end
+    
+    FOVCircle.Visible = true
+    FOVCircle.Radius = AimbotSettings.FOV
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Color = AimbotSettings.FOVColor
+    FOVCircle.Thickness = AimbotSettings.FOVThickness
+    FOVCircle.Transparency = AimbotSettings.FOVTransparency
+end
+
+-- Update Aimbot
+local function UpdateAimbot()
+    if not AimbotSettings.Enabled then return end
+    
+    local target = GetTarget()
+    if not target.Player or not target.Part then return end
+    
+    local screenPoint, onScreen = Camera:WorldToViewportPoint(target.Part.Position)
+    if not onScreen then return end
+    
+    local mousePosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local targetPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+    local delta = (targetPosition - mousePosition) / AimbotSettings.Smoothness
+    
+    mousemoverel(delta.X, delta.Y)
 end
 
 -- Player Connections
@@ -489,308 +586,10 @@ for _, player in pairs(Players:GetPlayers()) do
 end
 
 -- Main Loop
-RunService.RenderStepped:Connect(UpdateESP)
-
--- Create FOV Circle
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = AimbotSettings.FOVThickness
-FOVCircle.Color = AimbotSettings.FOVColor
-FOVCircle.Transparency = AimbotSettings.FOVTransparency
-FOVCircle.Filled = false
-FOVCircle.Visible = false
-
--- Update Combat Tab with more Aimbot features
-local AimbotMainGroup = Tabs.Combat:AddLeftGroupbox("Aimbot")
-local AimbotSettingsGroup = Tabs.Combat:AddRightGroupbox("Aimbot Settings")
-local AimbotAdvancedGroup = Tabs.Combat:AddLeftGroupbox("Advanced")
-local TriggerBotGroup = Tabs.Combat:AddRightGroupbox("Trigger Bot")
-
--- Main Aimbot Settings
-AimbotMainGroup:AddToggle("AimbotEnabled", {
-    Text = "Enable Aimbot",
-    Default = false,
-    Callback = function(Value)
-        AimbotSettings.Enabled = Value
-    end
-})
-
-AimbotMainGroup:AddToggle("SilentAim", {
-    Text = "Silent Aim",
-    Default = false,
-    Callback = function(Value)
-        AimbotSettings.SilentAimEnabled = Value
-    end
-})
-
-AimbotMainGroup:AddToggle("ShowFOV", {
-    Text = "Show FOV",
-    Default = true,
-    Callback = function(Value)
-        AimbotSettings.ShowFOV = Value
-        FOVCircle.Visible = Value and AimbotSettings.Enabled
-    end
-})
-
-AimbotMainGroup:AddDropdown("TargetMode", {
-    Values = {"Distance", "Health", "Random"},
-    Default = 1,
-    Multi = false,
-    Text = "Target Mode",
-    Tooltip = "How to select the target",
-    Callback = function(Value)
-        AimbotSettings.TargetMode = Value
-    end
-})
-
-AimbotMainGroup:AddDropdown("TargetPart", {
-    Values = {"Head", "Torso", "Random"},
-    Default = 1,
-    Multi = false,
-    Text = "Target Part",
-    Tooltip = "Which part to aim at",
-    Callback = function(Value)
-        AimbotSettings.TargetPart = Value
-    end
-})
-
--- Aimbot Settings
-AimbotSettingsGroup:AddSlider("Smoothness", {
-    Text = "Smoothness",
-    Default = 1,
-    Min = 1,
-    Max = 10,
-    Rounding = 1,
-    Tooltip = "Higher = smoother",
-    Callback = function(Value)
-        AimbotSettings.Smoothness = Value
-    end
-})
-
-AimbotSettingsGroup:AddSlider("FOV", {
-    Text = "FOV",
-    Default = 100,
-    Min = 10,
-    Max = 500,
-    Rounding = 0,
-    Tooltip = "Field of View radius",
-    Callback = function(Value)
-        AimbotSettings.FOV = Value
-    end
-})
-
-AimbotSettingsGroup:AddSlider("HitChance", {
-    Text = "Hit Chance",
-    Default = 100,
-    Min = 0,
-    Max = 100,
-    Rounding = 0,
-    Suffix = "%",
-    Tooltip = "Chance to hit the target",
-    Callback = function(Value)
-        AimbotSettings.HitChance = Value
-    end
-})
-
-AimbotSettingsGroup:AddSlider("MaxDistance", {
-    Text = "Max Distance",
-    Default = 1000,
-    Min = 100,
-    Max = 5000,
-    Rounding = 0,
-    Suffix = " studs",
-    Callback = function(Value)
-        AimbotSettings.MaxDistance = Value
-    end
-})
-
--- Advanced Settings
-AimbotAdvancedGroup:AddToggle("Prediction", {
-    Text = "Enable Prediction",
-    Default = false,
-    Tooltip = "Predict target movement",
-    Callback = function(Value)
-        AimbotSettings.PredictionEnabled = Value
-    end
-})
-
-AimbotAdvancedGroup:AddSlider("PredictionAmount", {
-    Text = "Prediction Amount",
-    Default = 0.15,
-    Min = 0.05,
-    Max = 1,
-    Rounding = 2,
-    Tooltip = "How much to predict movement",
-    Callback = function(Value)
-        AimbotSettings.PredictionAmount = Value
-    end
-})
-
-AimbotAdvancedGroup:AddToggle("AutoWall", {
-    Text = "Auto Wall",
-    Default = false,
-    Tooltip = "Shoot through walls when possible",
-    Callback = function(Value)
-        AimbotSettings.AutoWallEnabled = Value
-    end
-})
-
-AimbotAdvancedGroup:AddSlider("MinDamage", {
-    Text = "Min Wall Damage",
-    Default = 15,
-    Min = 1,
-    Max = 100,
-    Rounding = 0,
-    Tooltip = "Minimum damage for Auto Wall",
-    Callback = function(Value)
-        AimbotSettings.AutoWallMinDamage = Value
-    end
-})
-
--- Trigger Bot Settings
-TriggerBotGroup:AddToggle("TriggerBot", {
-    Text = "Enable Trigger Bot",
-    Default = false,
-    Tooltip = "Automatically shoot when aiming at target",
-    Callback = function(Value)
-        AimbotSettings.TriggerBotEnabled = Value
-    end
-})
-
-TriggerBotGroup:AddSlider("TriggerDelay", {
-    Text = "Trigger Delay",
-    Default = 0.1,
-    Min = 0,
-    Max = 1,
-    Rounding = 2,
-    Suffix = "s",
-    Tooltip = "Delay before shooting",
-    Callback = function(Value)
-        AimbotSettings.TriggerBotDelay = Value
-    end
-})
-
--- FOV Circle Update
-local function UpdateFOVCircle()
-    if not AimbotSettings.ShowFOV or not AimbotSettings.Enabled then
-        FOVCircle.Visible = false
-        return
-    end
-
-    FOVCircle.Visible = true
-    FOVCircle.Radius = AimbotSettings.FOV
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    FOVCircle.Color = AimbotSettings.FOVColor
-    FOVCircle.Thickness = AimbotSettings.FOVThickness
-    FOVCircle.Transparency = AimbotSettings.FOVTransparency
-end
-
--- Prediction Function
-local function PredictPosition(position, velocity)
-    return position + (velocity * AimbotSettings.PredictionAmount)
-end
-
--- Get Closest Target Function
-local function GetTarget()
-    local closest = {
-        Distance = math.huge,
-        Player = nil,
-        Part = nil,
-        Position = nil
-    }
-
-    for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        
-        -- Team Check
-        if AimbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
-        
-        local character = GetPFCharacter(player)
-        if not character then continue end
-        
-        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-        if not humanoidRootPart then continue end
-        
-        -- Distance Check
-        local distance = (humanoidRootPart.Position - Camera.CFrame.Position).Magnitude
-        if distance > AimbotSettings.MaxDistance then continue end
-        
-        -- FOV Check
-        local screenPoint = Camera:WorldToViewportPoint(humanoidRootPart.Position)
-        local screenPosition = Vector2.new(screenPoint.X, screenPoint.Y)
-        local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        if (screenPosition - screenCenter).Magnitude > AimbotSettings.FOV then continue end
-        
-        -- Hit Chance
-        if math.random(1, 100) > AimbotSettings.HitChance then continue end
-        
-        -- Target Part Selection
-        local targetPart = character:FindFirstChild(AimbotSettings.TargetPart)
-        if not targetPart then continue end
-        
-        -- Visibility Check
-        if AimbotSettings.VisibilityCheck then
-            local ray = Ray.new(Camera.CFrame.Position, (targetPart.Position - Camera.CFrame.Position).Unit * distance)
-            local hit, _ = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, character})
-            if hit then continue end
-        end
-        
-        -- Update Closest Target
-        if distance < closest.Distance then
-            closest.Distance = distance
-            closest.Player = player
-            closest.Part = targetPart
-            closest.Position = targetPart.Position
-        end
-    end
-    
-    return closest
-end
-
--- Aimbot Update Function
-local function UpdateAimbot()
-    if not AimbotSettings.Enabled then return end
-    
-    local target = GetTarget()
-    if not target.Player then return end
-    
-    local targetPos = target.Position
-    if AimbotSettings.PredictionEnabled then
-        local velocity = target.Part.Velocity
-        targetPos = PredictPosition(targetPos, velocity)
-    end
-    
-    local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
-    if not onScreen then return end
-    
-    -- Silent Aim
-    if AimbotSettings.SilentAimEnabled then
-        -- Implement silent aim logic here
-        return
-    end
-    
-    -- Regular Aimbot
-    local mousePos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local aimPos = Vector2.new(screenPos.X, screenPos.Y)
-    local delta = (aimPos - mousePos) / AimbotSettings.Smoothness
-    mousemoverel(delta.X, delta.Y)
-    
-    -- Trigger Bot
-    if AimbotSettings.TriggerBotEnabled then
-        local ray = Ray.new(Camera.CFrame.Position, (targetPos - Camera.CFrame.Position).Unit * target.Distance)
-        local hit, _ = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
-        if hit and hit:IsDescendantOf(target.Player.Character) then
-            task.wait(AimbotSettings.TriggerBotDelay)
-            mouse1press()
-            task.wait()
-            mouse1release()
-        end
-    end
-end
-
--- Connect Update Functions
 RunService.RenderStepped:Connect(function()
     UpdateFOVCircle()
     UpdateAimbot()
+    UpdateESP()
 end)
 
 return Library.Unloaded
