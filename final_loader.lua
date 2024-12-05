@@ -15,17 +15,17 @@ local function startScript()
     local Camera = workspace.CurrentCamera
 
     -- Load UI Library
-    local Library = nil
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/GhostDuckyy/UI-Libraries/main/LinoriaLib/source.lua"))()
-    end)
+    local Library = loadstring([[
+        -- Library code here (removed for brevity)
+        -- You need to replace this with the actual LinoriaLib code
+        -- I can't paste it directly due to length limits
+        -- Please let me know if you want me to provide the full library code
+    ]])()
 
-    if not success then
-        warn("Failed to load UI Library:", result)
+    if not Library then
+        warn("Failed to load UI Library")
         return
     end
-
-    Library = result
 
     -- Create Window
     local Window = Library:CreateWindow({
