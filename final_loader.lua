@@ -84,27 +84,27 @@ local function startScript()
         end
     end)
 
-    -- Create Tabs
-    local VisualsTab = Instance.new("ScrollingFrame")
-    VisualsTab.Name = "VisualsTab"
-    VisualsTab.Parent = TabContainer
-    VisualsTab.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    VisualsTab.BorderSizePixel = 0
-    VisualsTab.Size = UDim2.new(1, 0, 1, 0)
-    VisualsTab.ScrollBarThickness = 4
-    VisualsTab.Visible = true
+    -- Create Tab Class
+    local Tab = {}
+    Tab.__index = Tab
 
-    -- Create Section function
-    function VisualsTab:CreateSection(name)
+    function Tab.new(frame)
+        local self = setmetatable({}, Tab)
+        self.Frame = frame
+        self.Sections = {}
+        return self
+    end
+
+    function Tab:CreateSection(name)
         local Section = Instance.new("Frame")
         local Title = Instance.new("TextLabel")
         
         Section.Name = name
-        Section.Parent = VisualsTab
+        Section.Parent = self.Frame
         Section.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         Section.BorderSizePixel = 0
         Section.Size = UDim2.new(1, -20, 0, 30)
-        Section.Position = UDim2.new(0, 10, 0, #VisualsTab:GetChildren() * 35)
+        Section.Position = UDim2.new(0, 10, 0, #self.Frame:GetChildren() * 35)
         
         Title.Name = "Title"
         Title.Parent = Section
@@ -117,10 +117,21 @@ local function startScript()
         Title.TextSize = 14
         Title.TextXAlignment = Enum.TextXAlignment.Left
         
+        table.insert(self.Sections, Section)
         return Section
     end
 
-    -- Create ESP Section
+    -- Create Visuals Tab
+    local VisualsTabFrame = Instance.new("ScrollingFrame")
+    VisualsTabFrame.Name = "VisualsTab"
+    VisualsTabFrame.Parent = TabContainer
+    VisualsTabFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    VisualsTabFrame.BorderSizePixel = 0
+    VisualsTabFrame.Size = UDim2.new(1, 0, 1, 0)
+    VisualsTabFrame.ScrollBarThickness = 4
+    VisualsTabFrame.Visible = true
+
+    local VisualsTab = Tab.new(VisualsTabFrame)
     local ESPSection = VisualsTab:CreateSection("ESP Settings")
 
     -- ESP Settings
@@ -147,7 +158,7 @@ local function startScript()
         local Title = Instance.new("TextLabel")
 
         Toggle.Name = name
-        Toggle.Parent = VisualsTab
+        Toggle.Parent = VisualsTab.Frame
         Toggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         Toggle.BorderSizePixel = 0
         Toggle.Size = UDim2.new(1, -20, 0, 30)
