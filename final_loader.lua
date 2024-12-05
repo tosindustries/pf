@@ -1,267 +1,26 @@
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Wait for game to load
+if not game:IsLoaded() then 
+    game.Loaded:Wait()
+end
+
+-- Locals
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-
--- Debug function
-local function DebugLog(...)
-    print("[DEBUG]", ...)
-end
-
--- Character detection with debug logging
-local function GetCharacterFromPF(player)
-    if not player then 
-        DebugLog("No player provided")
-        return nil 
-    end
-    
-    DebugLog("Searching for character of player:", player.Name)
-    
-    -- Try to get from PF's character system
-    for _, folder in pairs(workspace:GetChildren()) do
-        if folder:IsA("Folder") and (folder.Name == "Players" or folder.Name == "Characters") then
-            DebugLog("Found potential character folder:", folder.Name)
-            for _, model in pairs(folder:GetChildren()) do
-                if model:IsA("Model") then
-                    local root = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
-                    if root and root:IsDescendantOf(workspace) then
-                        -- Check if this model belongs to our player
-                        local success, result = pcall(function()
-                            return model:FindFirstChild("Head") and 
-                                   model:FindFirstChild("Humanoid") and 
-                                   (model.Name == player.Name or 
-                                    model:GetAttribute("Player") == player.Name or 
-                                    model:FindFirstChild("Humanoid"):GetAttribute("Player") == player.Name)
-                        end)
-                        
-                        if success and result then
-                            DebugLog("Found character for", player.Name, "in", folder.Name)
-                            return model
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Try direct character reference
-    if player.Character and player.Character:FindFirstChild("Torso") then
-        DebugLog("Found character through player.Character for", player.Name)
-        return player.Character
-    end
-    
-    -- Try workspace direct children
-    for _, obj in pairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and obj.Name == player.Name and obj:FindFirstChild("Torso") then
-            DebugLog("Found character in workspace root for", player.Name)
-            return obj
-        end
-    end
-    
-    DebugLog("Failed to find character for", player.Name)
-    return nil
-end
-
--- Cache system with debug
-local cachedCharacters = {}
-local lastUpdate = 0
-local updateInterval = 0.1
-
-local function GetAllCharacters()
-    local characters = {}
-    local currentTime = tick()
-    
-    if currentTime - lastUpdate < updateInterval then
-        return cachedCharacters
-    end
-    
-    DebugLog("Updating character cache...")
-    local playerCount = 0
-    local foundCount = 0
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        playerCount = playerCount + 1
-        
-        local character = GetCharacterFromPF(player)
-        if character then
-            foundCount = foundCount + 1
-            characters[player] = character
-        end
-    end
-    
-    DebugLog(string.format("Found %d/%d characters", foundCount, playerCount))
-    
-    cachedCharacters = characters
-    lastUpdate = currentTime
-    return characters
-end
-
--- ESP Update function with debug
-UpdateESP = function()
-    SafeCall(function()
-        if not ESPSettings.Enabled then return end
-        
-        local characters = GetAllCharacters()
-        if not characters then return end
-        
-        -- Count characters properly
-        local characterCount = 0
-        for _ in pairs(characters) do
-            characterCount = characterCount + 1
-        end
-        DebugLog("ESP Update - Found", characterCount, "characters")
-        
-        for player, espObject in pairs(ESPObjects) do
-            SafeCall(function()
-                if not player or not espObject then 
-                    DebugLog("Invalid player or ESP object")
-                    return
-                end
-                
-                if not player:IsA("Player") then
-                    DebugLog("Invalid player object")
-                    return
-                end
-                
-                local character = characters[player]
-                if not character then
-                    DebugLog("No character found for", player.Name)
-                    -- Hide ESP elements
-                    if espObject.Box and espObject.Box.Visible then
-                        espObject.Box.Visible = false
-                    end
-                    if espObject.BoxOutline and espObject.BoxOutline.Visible then
-                        espObject.BoxOutline.Visible = false
-                    end
-                    if espObject.Name and espObject.Name.Visible then
-                        espObject.Name.Visible = false
-                    end
-                    if espObject.Health and espObject.Health.Visible then
-                        espObject.Health.Visible = false
-                    end
-                    if espObject.Distance and espObject.Distance.Visible then
-                        espObject.Distance.Visible = false
-                    end
-                    if espObject.Tracer and espObject.Tracer.Visible then
-                        espObject.Tracer.Visible = false
-                    end
-                    return
-                end
-                
-                local torso = character:FindFirstChild("Torso") or character:FindFirstChild("HumanoidRootPart")
-                if not torso then
-                    DebugLog("No torso found for", player.Name)
-                    return
-                end
-                
-                local vector, onScreen = nil, false
-                pcall(function()
-                    vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
-                end)
-                
-                if not vector or not onScreen then
-                    DebugLog(player.Name, "not on screen")
-                    -- Hide ESP elements
-                    if espObject.Box then espObject.Box.Visible = false end
-                    if espObject.BoxOutline then espObject.BoxOutline.Visible = false end
-                    if espObject.Name then espObject.Name.Visible = false end
-                    if espObject.Health then espObject.Health.Visible = false end
-                    if espObject.Distance then espObject.Distance.Visible = false end
-                    if espObject.Tracer then espObject.Tracer.Visible = false end
-                    return
-                end
-                
-                -- Calculate distance
-                local distance = (Camera.CFrame.Position - torso.Position).Magnitude
-                if distance > ESPSettings.MaxDistance then
-                    DebugLog(player.Name, "too far")
-                    return
-                end
-                
-                if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
-                    DebugLog(player.Name, "on same team")
-                    return
-                end
-                
-                -- Update ESP elements with error handling
-                if ESPSettings.ShowBox then
-                    SafeCall(function()
-                        local boxSize = Vector2.new(2000 / distance, 2500 / distance)
-                        local boxPosition = Vector2.new(vector.X - boxSize.X / 2, vector.Y - boxSize.Y / 2)
-                        
-                        if espObject.BoxOutline then
-                            espObject.BoxOutline.Size = boxSize
-                            espObject.BoxOutline.Position = boxPosition
-                            espObject.BoxOutline.Visible = true
-                        end
-                        
-                        if espObject.Box then
-                            espObject.Box.Size = boxSize
-                            espObject.Box.Position = boxPosition
-                            espObject.Box.Color = ESPSettings.BoxColor
-                            espObject.Box.Visible = true
-                        end
-                        
-                        DebugLog("Drew box for", player.Name)
-                    end)
-                end
-                
-                if ESPSettings.ShowName then
-                    SafeCall(function()
-                        if espObject.Name then
-                            espObject.Name.Text = player.Name
-                            espObject.Name.Position = Vector2.new(vector.X, vector.Y - 40)
-                            espObject.Name.Color = ESPSettings.TextColor
-                            espObject.Name.Size = ESPSettings.TextSize
-                            espObject.Name.Visible = true
-                        end
-                        DebugLog("Drew name for", player.Name)
-                    end)
-                end
-                
-                if ESPSettings.ShowTracer then
-                    SafeCall(function()
-                        if espObject.Tracer then
-                            espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                            espObject.Tracer.To = Vector2.new(vector.X, vector.Y)
-                            espObject.Tracer.Color = ESPSettings.TracerColor
-                            espObject.Tracer.Thickness = ESPSettings.TracerThickness
-                            espObject.Tracer.Visible = true
-                        end
-                        DebugLog("Drew tracer for", player.Name)
-                    end)
-                end
-            end)
-        end
-    end)
-end
 
 -- UI Library
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/addons/ThemeManager.lua"))()
 
--- Constants
-local Colors = {
-    Background = Color3.fromRGB(30, 30, 30),
-    Accent = Color3.fromRGB(0, 170, 255),
-    LightText = Color3.fromRGB(255, 255, 255),
-    DarkText = Color3.fromRGB(150, 150, 150)
-}
+-- Forward declare functions
+local UpdateESP, UpdateAimbot, UpdateFOVCircle
 
--- Safe call function
-local function SafeCall(func, ...)
-    local success, result = pcall(func, ...)
-    if not success then
-        warn("Error in SafeCall:", result)
-        return nil
-    end
-    return result
-end
-
--- ESP Settings
+-- Settings
 local ESPSettings = {
     Enabled = false,
     TeamCheck = true,
@@ -281,7 +40,6 @@ local ESPSettings = {
     TextColor = Color3.fromRGB(255, 255, 255)
 }
 
--- Aimbot Settings
 local AimbotSettings = {
     Enabled = false,
     TeamCheck = true,
@@ -299,9 +57,6 @@ local AimbotSettings = {
     HitChance = 100
 }
 
--- Forward declare update functions
-local UpdateFOVCircle, UpdateAimbot, UpdateESP
-
 -- Create FOV Circle
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = AimbotSettings.FOVThickness
@@ -311,7 +66,57 @@ FOVCircle.Filled = false
 FOVCircle.Visible = false
 FOVCircle.NumSides = 60
 
--- Get Target Function
+-- ESP Objects
+local ESPObjects = {}
+
+-- Character Detection
+local function GetCharacterFromPF(player)
+    if not player then return nil end
+    
+    -- Check workspace
+    for _, obj in pairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Torso") then
+            if obj.Name == player.Name then
+                return obj
+            end
+        end
+    end
+    
+    -- Check player's character
+    if player.Character and player.Character:FindFirstChild("Torso") then
+        return player.Character
+    end
+    
+    return nil
+end
+
+-- Cache system
+local cachedCharacters = {}
+local lastUpdate = 0
+local updateInterval = 0.1
+
+local function GetAllCharacters()
+    local currentTime = tick()
+    if currentTime - lastUpdate < updateInterval then
+        return cachedCharacters
+    end
+    
+    local characters = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = GetCharacterFromPF(player)
+            if character then
+                characters[player] = character
+            end
+        end
+    end
+    
+    cachedCharacters = characters
+    lastUpdate = currentTime
+    return characters
+end
+
+-- Target Selection
 local function GetTarget()
     local closest = {
         Distance = math.huge,
@@ -345,18 +150,6 @@ local function GetTarget()
         
         if fovDistance > AimbotSettings.FOV then continue end
         
-        if AimbotSettings.VisibilityCheck then
-            local rayParams = RaycastParams.new()
-            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-            rayParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
-            
-            local rayOrigin = Camera.CFrame.Position
-            local rayDirection = (targetPart.Position - rayOrigin).Unit
-            local rayResult = workspace:Raycast(rayOrigin, rayDirection * distance, rayParams)
-            
-            if rayResult then continue end
-        end
-        
         if distance < closest.Distance then
             closest.Distance = distance
             closest.Player = player
@@ -367,7 +160,77 @@ local function GetTarget()
     return closest
 end
 
--- Update FOV Circle function
+-- ESP Functions
+local function CreateESPObject(player)
+    if not player then return end
+    if player == LocalPlayer then return end
+    
+    local espObject = {
+        Player = player,
+        Box = Drawing.new("Square"),
+        BoxOutline = Drawing.new("Square"),
+        Name = Drawing.new("Text"),
+        Health = Drawing.new("Text"),
+        Distance = Drawing.new("Text"),
+        Tracer = Drawing.new("Line")
+    }
+    
+    -- Initialize Box
+    espObject.BoxOutline.Color = Color3.new(0, 0, 0)
+    espObject.BoxOutline.Thickness = 3
+    espObject.BoxOutline.Filled = false
+    espObject.BoxOutline.Visible = false
+    
+    espObject.Box.Color = ESPSettings.BoxColor
+    espObject.Box.Thickness = 1
+    espObject.Box.Filled = false
+    espObject.Box.Visible = false
+    
+    -- Initialize Name
+    espObject.Name.Color = ESPSettings.TextColor
+    espObject.Name.Size = ESPSettings.TextSize
+    espObject.Name.Center = true
+    espObject.Name.Outline = true
+    espObject.Name.Visible = false
+    
+    -- Initialize Health
+    espObject.Health.Color = ESPSettings.TextColor
+    espObject.Health.Size = ESPSettings.TextSize
+    espObject.Health.Center = true
+    espObject.Health.Outline = true
+    espObject.Health.Visible = false
+    
+    -- Initialize Distance
+    espObject.Distance.Color = ESPSettings.TextColor
+    espObject.Distance.Size = ESPSettings.TextSize
+    espObject.Distance.Center = true
+    espObject.Distance.Outline = true
+    espObject.Distance.Visible = false
+    
+    -- Initialize Tracer
+    espObject.Tracer.Color = ESPSettings.TracerColor
+    espObject.Tracer.Thickness = 1
+    espObject.Tracer.Visible = false
+    
+    ESPObjects[player] = espObject
+end
+
+local function RemoveESPObject(player)
+    local espObject = ESPObjects[player]
+    if not espObject then return end
+    
+    pcall(function()
+        for _, drawing in pairs(espObject) do
+            if type(drawing) == "table" and drawing.Remove then
+                drawing:Remove()
+            end
+        end
+    end)
+    
+    ESPObjects[player] = nil
+end
+
+-- Update Functions
 UpdateFOVCircle = function()
     if not AimbotSettings.ShowFOV or not AimbotSettings.Enabled then
         FOVCircle.Visible = false
@@ -382,7 +245,6 @@ UpdateFOVCircle = function()
     FOVCircle.Transparency = AimbotSettings.FOVTransparency
 end
 
--- Update Aimbot function
 UpdateAimbot = function()
     if not AimbotSettings.Enabled then return end
     
@@ -399,7 +261,83 @@ UpdateAimbot = function()
     mousemoverel(delta.X, delta.Y)
 end
 
--- Silent Aim Implementation
+UpdateESP = function()
+    if not ESPSettings.Enabled then return end
+    
+    local characters = GetAllCharacters()
+    if not characters then return end
+    
+    for player, espObject in pairs(ESPObjects) do
+        pcall(function()
+            if not player or not espObject then return end
+            
+            local character = characters[player]
+            if not character then
+                espObject.Box.Visible = false
+                espObject.BoxOutline.Visible = false
+                espObject.Name.Visible = false
+                espObject.Health.Visible = false
+                espObject.Distance.Visible = false
+                espObject.Tracer.Visible = false
+                return
+            end
+            
+            local torso = character:FindFirstChild("Torso")
+            if not torso then return end
+            
+            local vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
+            if not onScreen then
+                espObject.Box.Visible = false
+                espObject.BoxOutline.Visible = false
+                espObject.Name.Visible = false
+                espObject.Health.Visible = false
+                espObject.Distance.Visible = false
+                espObject.Tracer.Visible = false
+                return
+            end
+            
+            local distance = (Camera.CFrame.Position - torso.Position).Magnitude
+            if distance > ESPSettings.MaxDistance then return end
+            
+            if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then return end
+            
+            -- Update Box
+            if ESPSettings.ShowBox then
+                local boxSize = Vector2.new(2000 / distance, 2500 / distance)
+                local boxPosition = Vector2.new(vector.X - boxSize.X / 2, vector.Y - boxSize.Y / 2)
+                
+                espObject.BoxOutline.Size = boxSize
+                espObject.BoxOutline.Position = boxPosition
+                espObject.BoxOutline.Visible = true
+                
+                espObject.Box.Size = boxSize
+                espObject.Box.Position = boxPosition
+                espObject.Box.Color = ESPSettings.BoxColor
+                espObject.Box.Visible = true
+            end
+            
+            -- Update Name
+            if ESPSettings.ShowName then
+                espObject.Name.Text = player.Name
+                espObject.Name.Position = Vector2.new(vector.X, vector.Y - 40)
+                espObject.Name.Color = ESPSettings.TextColor
+                espObject.Name.Size = ESPSettings.TextSize
+                espObject.Name.Visible = true
+            end
+            
+            -- Update Tracer
+            if ESPSettings.ShowTracer then
+                espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                espObject.Tracer.To = Vector2.new(vector.X, vector.Y)
+                espObject.Tracer.Color = ESPSettings.TracerColor
+                espObject.Tracer.Thickness = ESPSettings.TracerThickness
+                espObject.Tracer.Visible = true
+            end
+        end)
+    end
+end
+
+-- Silent Aim
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
@@ -415,20 +353,13 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                         local origin = args[2]
                         if typeof(origin) == "CFrame" then
                             local targetPos = target.Part.Position
-                            
-                            -- Add slight randomization
                             local spread = Vector3.new(
                                 math.random(-5, 5) / 100,
                                 math.random(-5, 5) / 100,
                                 math.random(-5, 5) / 100
                             )
-                            
                             targetPos = targetPos + spread
-                            
-                            -- Calculate direction
                             local direction = (targetPos - origin.Position).Unit
-                            
-                            -- Create new CFrame
                             args[2] = CFrame.new(origin.Position, origin.Position + direction)
                         end
                     end
@@ -440,16 +371,184 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return oldNamecall(self, unpack(args))
 end)
 
--- Main update loop with error handling
-local function mainLoop()
-    SafeCall(function()
+-- Initialize ESP for existing players
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        CreateESPObject(player)
+    end
+end
+
+-- Player Connections
+Players.PlayerAdded:Connect(CreateESPObject)
+Players.PlayerRemoving:Connect(RemoveESPObject)
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    pcall(function()
         UpdateFOVCircle()
         UpdateAimbot()
         UpdateESP()
     end)
-end
+end)
 
--- Connect the main loop
-RunService.RenderStepped:Connect(mainLoop)
+-- Create Window and UI elements
+local Window = Library:CreateWindow({
+    Title = "TOS Industries | Phantom Forces",
+    Center = true,
+    AutoShow = true
+})
+
+-- Create Tabs
+local Tabs = {
+    Combat = Window:AddTab("Combat"),
+    Visuals = Window:AddTab("Visuals"),
+    Settings = Window:AddTab("Settings")
+}
+
+-- Combat Tab
+local AimbotMainGroup = Tabs.Combat:AddLeftGroupbox("Aimbot")
+local AimbotSettingsGroup = Tabs.Combat:AddRightGroupbox("Aimbot Settings")
+local SilentAimGroup = Tabs.Combat:AddLeftGroupbox("Silent Aim")
+
+-- Main Aimbot Settings
+AimbotMainGroup:AddToggle("AimbotEnabled", {
+    Text = "Enable Aimbot",
+    Default = false,
+    Callback = function(Value)
+        AimbotSettings.Enabled = Value
+        if not Value then
+            FOVCircle.Visible = false
+        end
+    end
+})
+
+AimbotMainGroup:AddToggle("ShowFOV", {
+    Text = "Show FOV",
+    Default = true,
+    Callback = function(Value)
+        AimbotSettings.ShowFOV = Value
+        FOVCircle.Visible = Value and AimbotSettings.Enabled
+    end
+})
+
+AimbotMainGroup:AddToggle("TeamCheck", {
+    Text = "Team Check",
+    Default = true,
+    Callback = function(Value)
+        AimbotSettings.TeamCheck = Value
+    end
+})
+
+AimbotMainGroup:AddDropdown("TargetPart", {
+    Values = {"Head", "Torso"},
+    Default = 1,
+    Multi = false,
+    Text = "Target Part",
+    Callback = function(Value)
+        AimbotSettings.TargetPart = Value
+    end
+})
+
+-- Silent Aim Settings
+SilentAimGroup:AddToggle("SilentAimEnabled", {
+    Text = "Silent Aim",
+    Default = false,
+    Callback = function(Value)
+        AimbotSettings.SilentAimEnabled = Value
+    end
+})
+
+SilentAimGroup:AddSlider("SilentAimHitChance", {
+    Text = "Hit Chance",
+    Default = 100,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Suffix = "%",
+    Callback = function(Value)
+        AimbotSettings.SilentAimHitChance = Value
+    end
+})
+
+-- Visuals Tab
+local ESPGroup = Tabs.Visuals:AddLeftGroupbox("ESP")
+local ESPSettingsGroup = Tabs.Visuals:AddRightGroupbox("ESP Settings")
+
+-- ESP Toggles
+ESPGroup:AddToggle("ESPEnabled", {
+    Text = "Enable ESP",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.Enabled = Value
+    end
+})
+
+ESPGroup:AddToggle("BoxESP", {
+    Text = "Boxes",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowBox = Value
+    end
+})
+
+ESPGroup:AddToggle("NameESP", {
+    Text = "Names",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowName = Value
+    end
+})
+
+ESPGroup:AddToggle("TracerESP", {
+    Text = "Tracers",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowTracer = Value
+    end
+})
+
+-- ESP Settings
+ESPSettingsGroup:AddSlider("MaxDistance", {
+    Text = "Max Distance",
+    Default = 1000,
+    Min = 100,
+    Max = 5000,
+    Rounding = 0,
+    Callback = function(Value)
+        ESPSettings.MaxDistance = Value
+    end
+})
+
+ESPSettingsGroup:AddSlider("TextSize", {
+    Text = "Text Size",
+    Default = 13,
+    Min = 8,
+    Max = 24,
+    Rounding = 0,
+    Callback = function(Value)
+        ESPSettings.TextSize = Value
+    end
+})
+
+-- Settings Tab
+local MenuGroup = Tabs.Settings:AddLeftGroupbox("Menu")
+
+MenuGroup:AddButton("Unload", function()
+    Library:Unload()
+end)
+
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
+    Default = "RightShift",
+    NoUI = true,
+    Text = "Menu keybind"
+})
+
+-- Initialize
+Library.ToggleKeybind = Options.MenuKeybind
+
+-- Theme Manager
+ThemeManager:SetLibrary(Library)
+ThemeManager:SetFolder("TOS Industries")
+ThemeManager:ApplyToTab(Tabs.Settings)
 
 return Library.Unloaded
