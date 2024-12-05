@@ -382,9 +382,45 @@ local function startScript()
     end)
     
     -- Create UI System
-    local UI = {}
-    
-    -- ... (rest of your UI code)
+    local UI = {
+        new = function()
+            local ui = {}
+            ui.Pages = {
+                Aimbot = Instance.new("Frame"),
+                Visuals = Instance.new("Frame")
+            }
+            ui.MainFrame = Instance.new("Frame")
+            return ui
+        end,
+        
+        createToggle = function(text, parent, callback)
+            local toggle = {}
+            toggle.SetState = function(state)
+                callback(state)
+            end
+            return toggle
+        end,
+        
+        createSlider = function(text, parent, min, max, default, callback)
+            local slider = {}
+            slider.SetValue = function(value)
+                callback(value)
+            end
+            return slider
+        end,
+        
+        createDropdown = function(text, parent, options, callback)
+            local dropdown = {}
+            dropdown.SetValue = function(value)
+                callback(value)
+            end
+            return dropdown
+        end,
+        
+        createLabel = function(text, parent)
+            -- Create label
+        end
+    }
     
     -- Create UI elements
     local ui = UI.new()
@@ -560,54 +596,7 @@ local function startScript()
     tracerOriginDropdown.SetValue("Bottom")
     distanceSlider.SetValue(1000)
     
-    -- Enhanced Aimbot UI Elements
-    local aimbotPage = ui.Pages.Aimbot
-
-    local aimbotToggle = UI.createToggle("Enable Aimbot", aimbotPage, function(state)
-        aimbotActive = state
-    end)
-
-    local aimbotSilentToggle = UI.createToggle("Silent Aim", aimbotPage, function(state)
-        aimbotSilent = state
-    end)
-
-    local aimbotPredictionToggle = UI.createToggle("Prediction", aimbotPage, function(state)
-        aimbotPrediction = state
-    end)
-
-    local aimbotPredictionSlider = UI.createSlider("Prediction Amount", aimbotPage, 0, 1, 0.165, function(value)
-        aimbotPredictionAmount = value
-    end)
-
-    local aimbotWallbangToggle = UI.createToggle("Wallbang", aimbotPage, function(state)
-        aimbotWallbang = state
-    end)
-
-    local aimbotAutoShootToggle = UI.createToggle("Auto Shoot", aimbotPage, function(state)
-        aimbotAutoShoot = state
-    end)
-
-    local aimbotTriggerBotToggle = UI.createToggle("Trigger Bot", aimbotPage, function(state)
-        aimbotTriggerBot = state
-    end)
-
-    local aimbotTriggerBotDelaySlider = UI.createSlider("Trigger Delay (ms)", aimbotPage, 0, 500, 0, function(value)
-        aimbotTriggerBotDelay = value / 1000
-    end)
-
-    local aimbotJumpCheckToggle = UI.createToggle("Jump Check", aimbotPage, function(state)
-        aimbotJumpCheck = state
-    end)
-
-    local aimbotDisableOnJumpToggle = UI.createToggle("Disable While Jumping", aimbotPage, function(state)
-        aimbotDisableOnJump = state
-    end)
-
-    local aimbotTargetModeDropdown = UI.createDropdown("Target Mode", aimbotPage, {"Distance", "Health", "Random"}, function(value)
-        aimbotTargetMode = value
-    end)
-    
-    -- Enhanced Aimbot Update Logic
+    -- Update FOV Circle and Aimbot
     RunService.RenderStepped:Connect(function()
         if showFOV then
             fovCircle.Position = UserInputService:GetMouseLocation()
