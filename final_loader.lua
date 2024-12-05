@@ -6,16 +6,13 @@ local function startScript()
     local RunService = game:GetService("RunService")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
-    local HttpService = game:GetService("HttpService")
 
     -- Locals
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
 
-    -- Load UI Library and addons
+    -- Load UI Library
     local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua"))()
-    local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/addons/ThemeManager.lua"))()
-    local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/addons/SaveManager.lua"))()
 
     -- Create Window
     local Window = Library:CreateWindow({
@@ -31,28 +28,19 @@ local function startScript()
         ['UI Settings'] = Window:AddTab("UI Settings")
     }
 
-    -- Initialize UI Settings tab first
+    -- Menu Toggle
+    local MenuKeybind = Enum.KeyCode.RightShift
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if not gameProcessed and input.KeyCode == MenuKeybind then
+            Library:Toggle()
+        end
+    end)
+
+    -- Menu Group
     local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-
-    -- Add menu elements
-    MenuGroup:AddButton('Unload', function() Library:Unload() end)
-    MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightShift', NoUI = true, Text = 'Menu keybind' })
-
-    -- Set up theme manager
-    ThemeManager:SetLibrary(Library)
-    SaveManager:SetLibrary(Library)
-
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
-
-    ThemeManager:SetFolder('PhantomForcesGUI')
-    SaveManager:SetFolder('PhantomForcesGUI/specific-game')
-
-    SaveManager:BuildConfigSection(Tabs['UI Settings'])
-    ThemeManager:ApplyToTab(Tabs['UI Settings'])
-
-    -- Set keybind after Options is populated
-    Library.ToggleKeybind = Options.MenuKeybind
+    MenuGroup:AddButton('Unload', function() 
+        Library:Unload()
+    end)
 
     -- ESP Settings
     local ESPSettings = {
@@ -446,7 +434,7 @@ local function startScript()
     })
 
     Library:Notify("Script loaded successfully!", 5)
-    
+
     return true
 end
 
