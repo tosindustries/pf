@@ -12,7 +12,7 @@ local function startScript()
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
 
-    -- Initialize UI Library
+    -- Load UI Library and addons
     local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua"))()
     local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/addons/ThemeManager.lua"))()
     local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/addons/SaveManager.lua"))()
@@ -30,6 +30,29 @@ local function startScript()
         Visuals = Window:AddTab("Visuals"),
         ['UI Settings'] = Window:AddTab("UI Settings")
     }
+
+    -- Initialize UI Settings tab first
+    local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+
+    -- Add menu elements
+    MenuGroup:AddButton('Unload', function() Library:Unload() end)
+    MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightShift', NoUI = true, Text = 'Menu keybind' })
+
+    -- Set up theme manager
+    ThemeManager:SetLibrary(Library)
+    SaveManager:SetLibrary(Library)
+
+    SaveManager:IgnoreThemeSettings()
+    SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
+
+    ThemeManager:SetFolder('PhantomForcesGUI')
+    SaveManager:SetFolder('PhantomForcesGUI/specific-game')
+
+    SaveManager:BuildConfigSection(Tabs['UI Settings'])
+    ThemeManager:ApplyToTab(Tabs['UI Settings'])
+
+    -- Set keybind after Options is populated
+    Library.ToggleKeybind = Options.MenuKeybind
 
     -- ESP Settings
     local ESPSettings = {
@@ -421,28 +444,6 @@ local function startScript()
             end
         end
     })
-
-    -- Initialize UI Settings tab
-    local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-
-    -- Populate it with Linoria UI elements
-    MenuGroup:AddButton('Unload', function() Library:Unload() end)
-    MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightShift', NoUI = true, Text = 'Menu keybind' }) 
-
-    Library.ToggleKeybind = Options.MenuKeybind
-
-    -- Theme Manager
-    ThemeManager:SetLibrary(Library)
-    SaveManager:SetLibrary(Library)
-
-    SaveManager:IgnoreThemeSettings() 
-    SaveManager:SetIgnoreIndexes({ 'MenuKeybind' }) 
-
-    ThemeManager:SetFolder('PhantomForcesGUI')
-    SaveManager:SetFolder('PhantomForcesGUI/specific-game')
-
-    SaveManager:BuildConfigSection(Tabs['UI Settings']) 
-    ThemeManager:ApplyToTab(Tabs['UI Settings'])
 
     Library:Notify("Script loaded successfully!", 5)
     
