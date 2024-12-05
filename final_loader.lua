@@ -515,46 +515,136 @@ local function UpdateESP()
     end)
 end
 
--- Silent Aim Implementation
+-- Add this before the silent aim implementation
+local function GetTarget()
+    local closest = {
+        Distance = math.huge,
+        Player = nil,
+        Part = nil
+    }
+    
+    return SafeCall(function()
+        local characters = GetAllCharacters()
+        if not characters then return closest end
+        
+        for player, character in pairs(characters) do
+            if not player or not character then continue end
+            if player == LocalPlayer then continue end
+            if AimbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
+            
+            local targetPart = character:FindFirstChild(AimbotSettings.TargetPart)
+            if not targetPart then 
+                targetPart = character:FindFirstChild("Torso")
+                if not targetPart then continue end
+            end
+            
+            local screenPoint, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+            if not onScreen and not AimbotSettings.SilentAimEnabled then continue end
+            
+            local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
+            if distance > AimbotSettings.MaxDistance then continue end
+            
+            if not AimbotSettings.SilentAimEnabled or distance > AimbotSettings.MaxDistance / 2 then
+                local screenPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+                local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+                local fovDistance = (screenPosition - screenCenter).Magnitude
+                
+                if fovDistance > AimbotSettings.FOV then continue end
+            end
+            
+            if distance < closest.Distance then
+                closest.Distance = distance
+                closest.Player = player
+                closest.Part = targetPart
+            end
+        end
+        
+        return closest
+    end) or closest
+end
+
+-- Add this for the aimbot
+local function UpdateAimbot()
+    if not AimbotSettings.Enabled then return end
+    
+    SafeCall(function()
+        local target = GetTarget()
+        if not target or not target.Part then return end
+        
+        local screenPoint, onScreen = Camera:WorldToViewportPoint(target.Part.Position)
+        if not onScreen then return end
+        
+        local mousePosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        local targetPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+        local delta = (targetPosition - mousePosition) / AimbotSettings.Smoothness
+        
+        mousemoverel(delta.X, delta.Y)
+    end)
+end
+
+-- Update the silent aim implementation
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
     local method = getnamecallmethod()
     
     if not checkcaller() and AimbotSettings.SilentAimEnabled and method == "FireServer" then
-        local namecallString = tostring(self)
-        if namecallString:find("ProjectileHandler") or namecallString:find("MainHandler") or namecallString:find("ShootHandler") then
-            if math.random(1, 100) <= AimbotSettings.SilentAimHitChance then
-                local target = GetTarget()
-                if target.Player and target.Part then
-                    if #args >= 3 then
-                        local origin = args[2]
-                        if typeof(origin) == "CFrame" then
-                            local targetPos = target.Part.Position
-                            
-                            -- Add slight randomization
-                            local spread = Vector3.new(
-                                math.random(-10, 10) / 100,
-                                math.random(-10, 10) / 100,
-                                math.random(-10, 10) / 100
-                            )
-                            
-                            targetPos = targetPos + spread
-                            
-                            -- Calculate direction
-                            local direction = (targetPos - origin.Position).Unit
-                            
-                            -- Create new CFrame
-                            args[2] = CFrame.new(origin.Position, origin.Position + direction)
+        local success, result = pcall(function()
+            local namecallString = tostring(self)
+            if namecallString:find("ProjectileHandler") or namecallString:find("MainHandler") or namecallString:find("ShootHandler") then
+                if math.random(1, 100) <= AimbotSettings.SilentAimHitChance then
+                    local target = GetTarget()
+                    if target and target.Player and target.Part then
+                        if #args >= 3 then
+                            local origin = args[2]
+                            if typeof(origin) == "CFrame" then
+                                local targetPos = target.Part.Position
+                                
+                                -- Add slight randomization
+                                local spread = Vector3.new(
+                                    math.random(-10, 10) / 100,
+                                    math.random(-10, 10) / 100,
+                                    math.random(-10, 10) / 100
+                                )
+                                
+                                targetPos = targetPos + spread
+                                
+                                -- Calculate direction
+                                local direction = (targetPos - origin.Position).Unit
+                                
+                                -- Create new CFrame
+                                args[2] = CFrame.new(origin.Position, origin.Position + direction)
+                            end
                         end
                     end
                 end
             end
+        end)
+        
+        if not success then
+            warn("Silent aim error:", result)
         end
     end
     
     return oldNamecall(self, unpack(args))
 end)
+
+-- Update FOV Circle function
+local function UpdateFOVCircle()
+    SafeCall(function()
+        if not AimbotSettings.ShowFOV or not AimbotSettings.Enabled then
+            FOVCircle.Visible = false
+            return
+        end
+        
+        FOVCircle.Visible = true
+        FOVCircle.Radius = AimbotSettings.FOV
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FOVCircle.Color = AimbotSettings.FOVColor
+        FOVCircle.Thickness = AimbotSettings.FOVThickness
+        FOVCircle.Transparency = AimbotSettings.FOVTransparency
+    end)
+end
 
 -- Player Connections
 Players.PlayerAdded:Connect(function(player)
