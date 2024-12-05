@@ -4,6 +4,7 @@ local function startScript()
     -- Services
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
     local Camera = workspace.CurrentCamera
     local LocalPlayer = Players.LocalPlayer
@@ -527,10 +528,10 @@ local function startScript()
     -- Get PF Character
     local function GetPFCharacter(player)
         local success, result = pcall(function()
-            -- PF stores characters in ReplicatedStorage
-            local chars = game:GetService("ReplicatedStorage").Character
-            if chars then
-                return chars[player]
+            if not ReplicatedStorage then return nil end
+            local chars = ReplicatedStorage:FindFirstChild("Character")
+            if chars and chars:FindFirstChild(player.Name) then
+                return chars[player.Name]
             end
             return nil
         end)
@@ -542,9 +543,11 @@ local function startScript()
 
     -- Get PF Health
     local function GetPFHealth(character)
+        if not character then return 0, 100 end
         local success, result = pcall(function()
-            if character and character:FindFirstChild("Health") then
-                return character.Health.Value, 100
+            local health = character:FindFirstChild("Health")
+            if health then
+                return health.Value, 100
             end
             return 0, 100
         end)
@@ -617,7 +620,7 @@ local function startScript()
         if espObject then
             for _, drawing in pairs(espObject) do
                 if type(drawing) == "table" and drawing.Remove then
-                    drawing:Remove()
+                    pcall(function() drawing:Remove() end)
                 end
             end
             ESPObjects[player] = nil
@@ -636,19 +639,22 @@ local function startScript()
         end
         
         local player = espObject.Player
+        if not player or not player.Parent then return end
+        
         local character = GetPFCharacter(player)
-        if not character then
-            return
-        end
+        if not character then return end
         
         -- Get health
         local health, maxHealth = GetPFHealth(character)
-        if health <= 0 then
-            return
-        end
+        if health <= 0 then return end
         
         -- Team Check
         if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
+            for _, drawing in pairs(espObject) do
+                if type(drawing) == "table" and drawing.Visible ~= nil then
+                    drawing.Visible = false
+                end
+            end
             return
         end
         
@@ -662,6 +668,11 @@ local function startScript()
         -- Distance Check
         local distance = (torso.Position - Camera.CFrame.Position).Magnitude
         if distance > ESPSettings.MaxDistance then
+            for _, drawing in pairs(espObject) do
+                if type(drawing) == "table" and drawing.Visible ~= nil then
+                    drawing.Visible = false
+                end
+            end
             return
         end
         
@@ -673,6 +684,11 @@ local function startScript()
         local screenBottom, onScreenBottom = Camera:WorldToViewportPoint(bottomPos)
         
         if not onScreenTop or not onScreenBottom then
+            for _, drawing in pairs(espObject) do
+                if type(drawing) == "table" and drawing.Visible ~= nil then
+                    drawing.Visible = false
+                end
+            end
             return
         end
         
@@ -869,8 +885,10 @@ local function startScript()
         Callback = function(Value)
             ESPSettings.TextSize = Value
             for _, espObject in pairs(ESPObjects) do
-                espObject.Name.Size = Value
-                espObject.Distance.Size = Value
+                if espObject.Name and espObject.Distance then
+                    espObject.Name.Size = Value
+                    espObject.Distance.Size = Value
+                end
             end
         end
     })
