@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
@@ -16,49 +17,250 @@ local Colors = {
     DarkText = Color3.fromRGB(150, 150, 150)
 }
 
--- Improved PF Character Detection
-local function GetPFCharacter(player)
-    if not player then return nil end
+-- Multiple methods to find PF characters
+local function GetCharacterFromReplication(player)
+    local replicationObject = ReplicatedStorage:FindFirstChild("ReplicationObject")
+    if replicationObject then
+        local char = replicationObject:FindFirstChild(player.Name)
+        if char and char:FindFirstChild("Torso") then
+            return char
+        end
+    end
+    return nil
+end
+
+local function GetCharacterFromWorkspace(player)
+    -- Direct method
+    local char = workspace:FindFirstChild(player.Name)
+    if char and char:FindFirstChild("Torso") then
+        return char
+    end
     
-    -- Get character from Phantom Forces
-    local success, character = pcall(function()
-        -- First try to get character directly
-        local char = player.Character
-        if char and char:FindFirstChild("Torso") then return char end
-        
-        -- If that fails, try to get it from the workspace
-        for _, obj in pairs(workspace:GetChildren()) do
-            if obj:IsA("Model") and obj:FindFirstChild("Torso") then
-                local humanoid = obj:FindFirstChild("Humanoid")
-                if humanoid and humanoid:GetAttribute("Player") == player then
+    -- Search through workspace children
+    for _, obj in pairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Torso") then
+            -- Try to match by name
+            if obj.Name == player.Name then
+                return obj
+            end
+            
+            -- Try to match by humanoid player property
+            local humanoid = obj:FindFirstChild("Humanoid")
+            if humanoid and humanoid:GetAttribute("Player") == player then
+                return obj
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function GetCharacterFromFolder(player)
+    -- Check common folder names used in PF
+    local commonFolders = {
+        "Players",
+        "Characters",
+        "Entities",
+        "Game",
+        "ActivePlayers",
+        "Alive"
+    }
+    
+    for _, folderName in ipairs(commonFolders) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            local char = folder:FindFirstChild(player.Name)
+            if char and char:FindFirstChild("Torso") then
+                return char
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function GetCharacterFromTeam(player)
+    if not player.Team then return nil end
+    
+    local teamFolder = workspace:FindFirstChild(player.Team.Name)
+    if teamFolder then
+        local char = teamFolder:FindFirstChild(player.Name)
+        if char and char:FindFirstChild("Torso") then
+            return char
+        end
+    end
+    
+    return nil
+end
+
+local function GetCharacterFromAttributes(player)
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Torso") then
+            -- Check various common attribute names
+            local attributes = {
+                "Player",
+                "PlayerName",
+                "Owner",
+                "OwnerName",
+                "Username"
+            }
+            
+            for _, attrName in ipairs(attributes) do
+                if obj:GetAttribute(attrName) == player.Name then
                     return obj
                 end
             end
         end
-        
-        return nil
-    end)
+    end
     
-    if not success or not character then return nil end
+    return nil
+end
+
+-- Cache system
+local cachedCharacters = {}
+local lastUpdate = 0
+local updateInterval = 1 -- Update every second
+
+local function GetAllCharacters()
+    local characters = {}
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        
+        -- Try all methods in order until we find the character
+        local character = 
+            GetCharacterFromReplication(player) or
+            GetCharacterFromWorkspace(player) or
+            GetCharacterFromFolder(player) or
+            GetCharacterFromTeam(player) or
+            GetCharacterFromAttributes(player)
+        
+        if character then
+            characters[player] = character
+        end
+    end
+    
+    return characters
+end
+
+local function GetPFCharacter(player)
+    if not player then return nil end
+    
+    -- Update cache if needed
+    local currentTime = tick()
+    if currentTime - lastUpdate > updateInterval then
+        cachedCharacters = GetAllCharacters()
+        lastUpdate = currentTime
+    end
+    
+    -- Return from cache
+    if cachedCharacters[player] then
+        -- Verify the character is still valid
+        if cachedCharacters[player]:FindFirstChild("Torso") then
+            return cachedCharacters[player]
+        end
+    end
+    
+    -- If cache failed, try immediate lookup
+    local character = 
+        GetCharacterFromReplication(player) or
+        GetCharacterFromWorkspace(player) or
+        GetCharacterFromFolder(player) or
+        GetCharacterFromTeam(player) or
+        GetCharacterFromAttributes(player)
+    
+    if character then
+        cachedCharacters[player] = character
+    end
+    
     return character
 end
 
+-- Improved health detection
 local function GetPFHealth(character)
     if not character then return 0, 100 end
     
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid then return 0, 100 end
+    -- Try multiple methods to get health
+    local function getHealthFromHumanoid()
+        local humanoid = character:FindFirstChild("Humanoid")
+        if humanoid then
+            return humanoid.Health, humanoid.MaxHealth
+        end
+        return nil
+    end
     
-    local health = humanoid.Health
-    local maxHealth = humanoid.MaxHealth
+    local function getHealthFromValue()
+        local health = character:FindFirstChild("Health")
+        if health and health:IsA("NumberValue") then
+            local maxHealth = character:FindFirstChild("MaxHealth")
+            return health.Value, maxHealth and maxHealth.Value or 100
+        end
+        return nil
+    end
+    
+    local function getHealthFromAttribute()
+        local health = character:GetAttribute("Health")
+        local maxHealth = character:GetAttribute("MaxHealth")
+        if health then
+            return health, maxHealth or 100
+        end
+        return nil
+    end
+    
+    -- Try all methods
+    local health, maxHealth = 
+        getHealthFromHumanoid() or
+        getHealthFromValue() or
+        getHealthFromAttribute() or
+        {100, 100}
     
     -- Ensure we have valid numbers
-    if type(health) ~= "number" or type(maxHealth) ~= "number" then
-        return 0, 100
-    end
+    health = type(health) == "number" and health or 100
+    maxHealth = type(maxHealth) == "number" and maxHealth or 100
     
     return health, maxHealth
 end
+
+-- Silent Aim Implementation
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
+    
+    if not checkcaller() and AimbotSettings.SilentAimEnabled and method == "FireServer" then
+        local namecallString = tostring(self)
+        if namecallString:find("ProjectileHandler") or namecallString:find("MainHandler") or namecallString:find("ShootHandler") then
+            if math.random(1, 100) <= AimbotSettings.SilentAimHitChance then
+                local target = GetTarget()
+                if target.Player and target.Part then
+                    if #args >= 3 then
+                        local origin = args[2]
+                        if typeof(origin) == "CFrame" then
+                            local targetPos = target.Part.Position
+                            
+                            -- Add slight randomization
+                            local spread = Vector3.new(
+                                math.random(-10, 10) / 100,
+                                math.random(-10, 10) / 100,
+                                math.random(-10, 10) / 100
+                            )
+                            
+                            targetPos = targetPos + spread
+                            
+                            -- Calculate direction
+                            local direction = (targetPos - origin.Position).Unit
+                            
+                            -- Create new CFrame
+                            args[2] = CFrame.new(origin.Position, origin.Position + direction)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return oldNamecall(self, unpack(args))
+end)
 
 -- ESP Settings
 local ESPSettings = {
@@ -105,6 +307,167 @@ FOVCircle.Color = AimbotSettings.FOVColor
 FOVCircle.Transparency = AimbotSettings.FOVTransparency
 FOVCircle.Filled = false
 FOVCircle.Visible = false
+
+-- Get Target Function
+local function GetTarget()
+    local closest = {
+        Distance = math.huge,
+        Player = nil,
+        Part = nil
+    }
+    
+    local characters = GetAllCharacters()
+    
+    for player, character in pairs(characters) do
+        if player == LocalPlayer then continue end
+        
+        if AimbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
+        
+        local targetPart = character:FindFirstChild(AimbotSettings.TargetPart)
+        if not targetPart then 
+            targetPart = character:FindFirstChild("Torso")
+            if not targetPart then continue end
+        end
+        
+        local screenPoint, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+        if not onScreen and not AimbotSettings.SilentAimEnabled then continue end
+        
+        local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
+        if distance > AimbotSettings.MaxDistance then continue end
+        
+        if not AimbotSettings.SilentAimEnabled or distance > AimbotSettings.MaxDistance / 2 then
+            local screenPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+            local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            local fovDistance = (screenPosition - screenCenter).Magnitude
+            
+            if fovDistance > AimbotSettings.FOV then continue end
+        end
+        
+        if AimbotSettings.VisibilityCheck then
+            local rayOrigin = Camera.CFrame.Position
+            local rayDirection = (targetPart.Position - rayOrigin).Unit
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            
+            local raycastResult = workspace:Raycast(rayOrigin, rayDirection * distance, raycastParams)
+            if raycastResult then continue end
+        end
+        
+        if distance < closest.Distance then
+            closest.Distance = distance
+            closest.Player = player
+            closest.Part = targetPart
+        end
+    end
+    
+    return closest
+end
+
+-- Update ESP Function
+local function UpdateESP()
+    local characters = GetAllCharacters()
+    
+    for player, espObject in pairs(ESPObjects) do
+        local character = characters[player]
+        if not character or not ESPSettings.Enabled then
+            espObject.Box.Visible = false
+            espObject.BoxOutline.Visible = false
+            espObject.Name.Visible = false
+            espObject.Health.Visible = false
+            espObject.Distance.Visible = false
+            espObject.Tracer.Visible = false
+            continue
+        end
+        
+        local torso = character:FindFirstChild("Torso")
+        if not torso then continue end
+        
+        local vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
+        if not onScreen then
+            espObject.Box.Visible = false
+            espObject.BoxOutline.Visible = false
+            espObject.Name.Visible = false
+            espObject.Health.Visible = false
+            espObject.Distance.Visible = false
+            espObject.Tracer.Visible = false
+            continue
+        end
+        
+        local distance = (Camera.CFrame.Position - torso.Position).Magnitude
+        if distance > ESPSettings.MaxDistance then
+            espObject.Box.Visible = false
+            espObject.BoxOutline.Visible = false
+            espObject.Name.Visible = false
+            espObject.Health.Visible = false
+            espObject.Distance.Visible = false
+            espObject.Tracer.Visible = false
+            continue
+        end
+        
+        if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
+            espObject.Box.Visible = false
+            espObject.BoxOutline.Visible = false
+            espObject.Name.Visible = false
+            espObject.Health.Visible = false
+            espObject.Distance.Visible = false
+            espObject.Tracer.Visible = false
+            continue
+        end
+        
+        -- Update Box
+        if ESPSettings.ShowBox then
+            local boxSize = Vector2.new(2000 / distance, 2500 / distance)
+            local boxPosition = Vector2.new(vector.X - boxSize.X / 2, vector.Y - boxSize.Y / 2)
+            
+            espObject.BoxOutline.Size = boxSize
+            espObject.BoxOutline.Position = boxPosition
+            espObject.BoxOutline.Visible = true
+            
+            espObject.Box.Size = boxSize
+            espObject.Box.Position = boxPosition
+            espObject.Box.Color = ESPSettings.BoxColor
+            espObject.Box.Visible = true
+        else
+            espObject.Box.Visible = false
+            espObject.BoxOutline.Visible = false
+        end
+        
+        -- Update Name
+        if ESPSettings.ShowName then
+            espObject.Name.Text = player.Name
+            espObject.Name.Position = Vector2.new(vector.X, vector.Y - 40)
+            espObject.Name.Color = ESPSettings.TextColor
+            espObject.Name.Size = ESPSettings.TextSize
+            espObject.Name.Visible = true
+        else
+            espObject.Name.Visible = false
+        end
+        
+        -- Update Health
+        if ESPSettings.ShowHealth then
+            local health, maxHealth = GetPFHealth(character)
+            espObject.Health.Text = math.floor(health) .. "/" .. math.floor(maxHealth)
+            espObject.Health.Position = Vector2.new(vector.X, vector.Y + 40)
+            espObject.Health.Color = Color3.fromHSV(health/maxHealth * 0.3, 1, 1)
+            espObject.Health.Size = ESPSettings.TextSize
+            espObject.Health.Visible = true
+        else
+            espObject.Health.Visible = false
+        end
+        
+        -- Update Tracer
+        if ESPSettings.ShowTracer then
+            espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            espObject.Tracer.To = Vector2.new(vector.X, vector.Y)
+            espObject.Tracer.Color = ESPSettings.TracerColor
+            espObject.Tracer.Thickness = ESPSettings.TracerThickness
+            espObject.Tracer.Visible = true
+        else
+            espObject.Tracer.Visible = false
+        end
+    end
+end
 
 -- Create Window
 local Window = Library:CreateWindow({
@@ -377,169 +740,6 @@ local function RemoveESPObject(player)
     end
     
     ESPObjects[player] = nil
-end
-
-local function UpdateESP()
-    for player, espObject in pairs(ESPObjects) do
-        local character = GetPFCharacter(player)
-        if not character or not ESPSettings.Enabled then
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            espObject.Distance.Visible = false
-            espObject.Tracer.Visible = false
-            continue
-        end
-        
-        local torso = character:FindFirstChild("Torso")
-        if not torso then continue end
-        
-        local vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
-        if not onScreen then
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            espObject.Distance.Visible = false
-            espObject.Tracer.Visible = false
-            continue
-        end
-        
-        local distance = (Camera.CFrame.Position - torso.Position).Magnitude
-        if distance > ESPSettings.MaxDistance then
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            espObject.Distance.Visible = false
-            espObject.Tracer.Visible = false
-            continue
-        end
-        
-        if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-            espObject.Name.Visible = false
-            espObject.Health.Visible = false
-            espObject.Distance.Visible = false
-            espObject.Tracer.Visible = false
-            continue
-        end
-        
-        -- Update Box
-        if ESPSettings.ShowBox then
-            local boxSize = Vector2.new(2000 / distance, 2500 / distance)
-            local boxPosition = Vector2.new(vector.X - boxSize.X / 2, vector.Y - boxSize.Y / 2)
-            
-            espObject.BoxOutline.Size = boxSize
-            espObject.BoxOutline.Position = boxPosition
-            espObject.BoxOutline.Visible = true
-            
-            espObject.Box.Size = boxSize
-            espObject.Box.Position = boxPosition
-            espObject.Box.Color = ESPSettings.BoxColor
-            espObject.Box.Visible = true
-        else
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-        end
-        
-        -- Update Name
-        if ESPSettings.ShowName then
-            espObject.Name.Text = player.Name
-            espObject.Name.Position = Vector2.new(vector.X, vector.Y - 40)
-            espObject.Name.Color = ESPSettings.TextColor
-            espObject.Name.Size = ESPSettings.TextSize
-            espObject.Name.Visible = true
-        else
-            espObject.Name.Visible = false
-        end
-        
-        -- Update Health
-        if ESPSettings.ShowHealth then
-            local health, maxHealth = GetPFHealth(character)
-            espObject.Health.Text = math.floor(health) .. "/" .. math.floor(maxHealth)
-            espObject.Health.Position = Vector2.new(vector.X, vector.Y + 40)
-            espObject.Health.Color = Color3.fromHSV(health/maxHealth * 0.3, 1, 1)
-            espObject.Health.Size = ESPSettings.TextSize
-            espObject.Health.Visible = true
-        else
-            espObject.Health.Visible = false
-        end
-        
-        -- Update Tracer
-        if ESPSettings.ShowTracer then
-            espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            espObject.Tracer.To = Vector2.new(vector.X, vector.Y)
-            espObject.Tracer.Color = ESPSettings.TracerColor
-            espObject.Tracer.Thickness = ESPSettings.TracerThickness
-            espObject.Tracer.Visible = true
-        else
-            espObject.Tracer.Visible = false
-        end
-    end
-end
-
--- Get Target Function
-local function GetTarget()
-    local closest = {
-        Distance = math.huge,
-        Player = nil,
-        Part = nil
-    }
-    
-    for _, player in pairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
-        
-        if AimbotSettings.TeamCheck and player.Team == LocalPlayer.Team then continue end
-        
-        local character = GetPFCharacter(player)
-        if not character then continue end
-        
-        local targetPart = character:FindFirstChild(AimbotSettings.TargetPart)
-        if not targetPart then 
-            -- Fallback to Torso if target part not found
-            targetPart = character:FindFirstChild("Torso")
-            if not targetPart then continue end
-        end
-        
-        local screenPoint, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-        if not onScreen and not AimbotSettings.SilentAimEnabled then continue end
-        
-        local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
-        if distance > AimbotSettings.MaxDistance then continue end
-        
-        -- FOV Check (skip for silent aim if target is close enough)
-        if not AimbotSettings.SilentAimEnabled or distance > AimbotSettings.MaxDistance / 2 then
-            local screenPosition = Vector2.new(screenPoint.X, screenPoint.Y)
-            local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-            local fovDistance = (screenPosition - screenCenter).Magnitude
-            
-            if fovDistance > AimbotSettings.FOV then continue end
-        end
-        
-        -- Visibility Check
-        if AimbotSettings.VisibilityCheck then
-            local rayOrigin = Camera.CFrame.Position
-            local rayDirection = (targetPart.Position - rayOrigin).Unit
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            
-            local raycastResult = workspace:Raycast(rayOrigin, rayDirection * distance, raycastParams)
-            if raycastResult then continue end
-        end
-        
-        -- Update closest target
-        if distance < closest.Distance then
-            closest.Distance = distance
-            closest.Player = player
-            closest.Part = targetPart
-        end
-    end
-    
-    return closest
 end
 
 -- Update FOV Circle
