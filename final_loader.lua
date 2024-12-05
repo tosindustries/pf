@@ -27,6 +27,7 @@ local function startScript()
         fovCircle.ZIndex = 999
         fovCircle.Transparency = 1
         fovCircle.Color = Color3.fromRGB(255, 255, 255)
+        fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
         
         local snapLine = Drawing.new("Line")
         snapLine.Thickness = 1.5
@@ -430,149 +431,168 @@ local function startScript()
         Objects = {}
     }
     
-    -- Create ESP Container
-    local espContainer = Instance.new("Folder")
-    espContainer.Name = "ESPContainer"
-    espContainer.Parent = game.CoreGui
-    
+    -- Create ESP Object
     function ESP:CreateObject(player)
         if self.Objects[player] then return end
         
-        -- Create BillboardGui for ESP
-        local billboard = Instance.new("BillboardGui")
-        billboard.Name = player.Name .. "_ESP"
-        billboard.AlwaysOnTop = true
-        billboard.Size = UDim2.new(4, 0, 5, 0)
-        billboard.StudsOffset = Vector3.new(0, 0, 0)
-        billboard.MaxDistance = 1000
-        billboard.Parent = espContainer
+        local box = Drawing.new("Square")
+        box.Visible = false
+        box.Color = Color3.fromRGB(255, 255, 255)
+        box.Thickness = 1
+        box.Transparency = 1
+        box.Filled = false
         
-        -- Create Box
-        local box = Instance.new("Frame")
-        box.Name = "Box"
-        box.Size = UDim2.new(1, 0, 1, 0)
-        box.BackgroundTransparency = 1
-        box.BorderSizePixel = 2
-        box.BorderColor3 = Color3.fromRGB(255, 255, 255)
-        box.Parent = billboard
+        local name = Drawing.new("Text")
+        name.Visible = false
+        name.Color = Color3.fromRGB(255, 255, 255)
+        name.Size = 13
+        name.Center = true
+        name.Outline = true
+        name.OutlineColor = Color3.fromRGB(0, 0, 0)
+        name.Text = player.Name
         
-        -- Create Name Label
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "NameLabel"
-        nameLabel.Size = UDim2.new(1, 0, 0, 20)
-        nameLabel.Position = UDim2.new(0, 0, 0, -25)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.TextStrokeTransparency = 0
-        nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        nameLabel.Font = Enum.Font.SourceSansBold
-        nameLabel.TextSize = 14
-        nameLabel.Text = player.Name
-        nameLabel.Parent = billboard
+        local distance = Drawing.new("Text")
+        distance.Visible = false
+        distance.Color = Color3.fromRGB(255, 255, 255)
+        distance.Size = 13
+        distance.Center = true
+        distance.Outline = true
+        distance.OutlineColor = Color3.fromRGB(0, 0, 0)
         
-        -- Create Health Bar
-        local healthBarOutline = Instance.new("Frame")
-        healthBarOutline.Name = "HealthBarOutline"
-        healthBarOutline.Size = UDim2.new(0, 5, 1, 0)
-        healthBarOutline.Position = UDim2.new(0, -10, 0, 0)
-        healthBarOutline.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        healthBarOutline.BorderSizePixel = 0
-        healthBarOutline.Parent = billboard
+        local healthBar = Drawing.new("Square")
+        healthBar.Visible = false
+        healthBar.Color = Color3.fromRGB(0, 255, 0)
+        healthBar.Thickness = 1
+        healthBar.Filled = true
+        healthBar.Transparency = 1
         
-        local healthBar = Instance.new("Frame")
-        healthBar.Name = "HealthBar"
-        healthBar.Size = UDim2.new(1, 0, 1, 0)
-        healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
-        healthBar.BorderSizePixel = 0
-        healthBar.Parent = healthBarOutline
-        
-        -- Create Distance Label
-        local distanceLabel = Instance.new("TextLabel")
-        distanceLabel.Name = "DistanceLabel"
-        distanceLabel.Size = UDim2.new(1, 0, 0, 20)
-        distanceLabel.Position = UDim2.new(0, 0, 1, 5)
-        distanceLabel.BackgroundTransparency = 1
-        distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        distanceLabel.TextStrokeTransparency = 0
-        distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        distanceLabel.Font = Enum.Font.SourceSansBold
-        distanceLabel.TextSize = 14
-        distanceLabel.Parent = billboard
+        local healthBarOutline = Drawing.new("Square")
+        healthBarOutline.Visible = false
+        healthBarOutline.Color = Color3.fromRGB(0, 0, 0)
+        healthBarOutline.Thickness = 1
+        healthBarOutline.Filled = false
+        healthBarOutline.Transparency = 1
         
         self.Objects[player] = {
-            Billboard = billboard,
             Box = box,
-            NameLabel = nameLabel,
+            Name = name,
+            Distance = distance,
             HealthBar = healthBar,
             HealthBarOutline = healthBarOutline,
-            DistanceLabel = distanceLabel
+            Player = player,
+            Connection = RunService.RenderStepped:Connect(function()
+                self:UpdateObject(player)
+            end)
         }
     end
     
     function ESP:RemoveObject(player)
-        local objects = self.Objects[player]
-        if not objects then return end
+        local object = self.Objects[player]
+        if not object then return end
         
-        objects.Billboard:Destroy()
+        object.Box:Remove()
+        object.Name:Remove()
+        object.Distance:Remove()
+        object.HealthBar:Remove()
+        object.HealthBarOutline:Remove()
+        object.Connection:Disconnect()
+        
         self.Objects[player] = nil
     end
     
-    function ESP:Update()
-        for player, objects in pairs(self.Objects) do
-            if not self.Enabled or not player or not player.Parent or player == LocalPlayer then
-                objects.Billboard.Enabled = false
-                continue
-            end
+    function ESP:UpdateObject(player)
+        local object = self.Objects[player]
+        if not object then return end
+        
+        if not self.Enabled or not player or not player.Parent then
+            object.Box.Visible = false
+            object.Name.Visible = false
+            object.Distance.Visible = false
+            object.HealthBar.Visible = false
+            object.HealthBarOutline.Visible = false
+            return
+        end
+        
+        local character = player.Character
+        local humanoid = character and character:FindFirstChild("Humanoid")
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        
+        if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
+            object.Box.Visible = false
+            object.Name.Visible = false
+            object.Distance.Visible = false
+            object.HealthBar.Visible = false
+            object.HealthBarOutline.Visible = false
+            return
+        end
+        
+        if self.TeamCheck and player.Team == LocalPlayer.Team then
+            object.Box.Visible = false
+            object.Name.Visible = false
+            object.Distance.Visible = false
+            object.HealthBar.Visible = false
+            object.HealthBarOutline.Visible = false
+            return
+        end
+        
+        local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        if not onScreen then
+            object.Box.Visible = false
+            object.Name.Visible = false
+            object.Distance.Visible = false
+            object.HealthBar.Visible = false
+            object.HealthBarOutline.Visible = false
+            return
+        end
+        
+        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
+        local size = math.clamp(1 / (distance * 0.2), 0.1, 1)
+        local boxSize = Vector2.new(1000 * size, 1500 * size)
+        local boxPosition = Vector2.new(pos.X - boxSize.X / 2, pos.Y - boxSize.Y / 2)
+        
+        -- Update Box
+        if self.Boxes then
+            object.Box.Size = boxSize
+            object.Box.Position = boxPosition
+            object.Box.Visible = true
+        else
+            object.Box.Visible = false
+        end
+        
+        -- Update Name
+        if self.Names then
+            object.Name.Position = Vector2.new(pos.X, boxPosition.Y - 15)
+            object.Name.Visible = true
+        else
+            object.Name.Visible = false
+        end
+        
+        -- Update Distance
+        if self.Distance then
+            object.Distance.Text = string.format("[%d]", math.floor(distance))
+            object.Distance.Position = Vector2.new(pos.X, boxPosition.Y + boxSize.Y + 5)
+            object.Distance.Visible = true
+        else
+            object.Distance.Visible = false
+        end
+        
+        -- Update Health Bar
+        if self.Health then
+            local healthPercent = humanoid.Health / humanoid.MaxHealth
+            local barHeight = boxSize.Y
+            local barPosition = Vector2.new(boxPosition.X - 7, boxPosition.Y)
             
-            local character = player.Character
-            local humanoid = character and character:FindFirstChild("Humanoid")
-            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+            object.HealthBarOutline.Size = Vector2.new(4, barHeight)
+            object.HealthBarOutline.Position = barPosition
+            object.HealthBarOutline.Visible = true
             
-            if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
-                objects.Billboard.Enabled = false
-                continue
-            end
-            
-            if self.TeamCheck and player.Team == LocalPlayer.Team then
-                objects.Billboard.Enabled = false
-                continue
-            end
-            
-            -- Update billboard
-            objects.Billboard.Enabled = true
-            objects.Billboard.Adornee = rootPart
-            
-            -- Update box
-            objects.Box.Visible = self.Boxes
-            
-            -- Update name
-            objects.NameLabel.Visible = self.Names
-            
-            -- Update health bar
-            if self.Health then
-                local healthPercent = humanoid.Health / humanoid.MaxHealth
-                objects.HealthBarOutline.Visible = true
-                objects.HealthBar.Visible = true
-                objects.HealthBar.Size = UDim2.new(1, 0, healthPercent, 0)
-                objects.HealthBar.Position = UDim2.new(0, 0, 1 - healthPercent, 0)
-                objects.HealthBar.BackgroundColor3 = Color3.fromRGB(
-                    255 * (1 - healthPercent),
-                    255 * healthPercent,
-                    0
-                )
-            else
-                objects.HealthBarOutline.Visible = false
-                objects.HealthBar.Visible = false
-            end
-            
-            -- Update distance
-            if self.Distance then
-                local distance = math.floor((rootPart.Position - Camera.CFrame.Position).Magnitude)
-                objects.DistanceLabel.Visible = true
-                objects.DistanceLabel.Text = string.format("[%d]", distance)
-            else
-                objects.DistanceLabel.Visible = false
-            end
+            object.HealthBar.Size = Vector2.new(2, barHeight * healthPercent)
+            object.HealthBar.Position = Vector2.new(barPosition.X + 1, barPosition.Y + barHeight * (1 - healthPercent))
+            object.HealthBar.Color = Color3.fromRGB(255 - 255 * healthPercent, 255 * healthPercent, 0)
+            object.HealthBar.Visible = true
+        else
+            object.HealthBarOutline.Visible = false
+            object.HealthBar.Visible = false
         end
     end
     
@@ -583,7 +603,6 @@ local function startScript()
         end
     end
     
-    -- Connect player events
     Players.PlayerAdded:Connect(function(player)
         ESP:CreateObject(player)
     end)
@@ -592,43 +611,21 @@ local function startScript()
         ESP:RemoveObject(player)
     end)
     
-    -- Update ESP
+    -- Update FOV circle position
     RunService.RenderStepped:Connect(function()
-        ESP:Update()
+        if fovCircle.Visible then
+            fovCircle.Position = UserInputService:GetMouseLocation()
+        end
     end)
     
-    -- Create ESP UI elements
-    local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
-        ESP.Enabled = state
-    end)
+    -- Create UI
+    local ui = UI.new()
     
-    local boxesToggle = UI.createToggle("Show Boxes", ui.Pages.Visuals, function(state)
-        ESP.Boxes = state
+    -- Modify close button behavior
+    local closeButton = ui.MainFrame.TopBar.CloseButton
+    closeButton.MouseButton1Click:Connect(function()
+        ui.MainFrame.Visible = not ui.MainFrame.Visible
     end)
-    
-    local namesToggle = UI.createToggle("Show Names", ui.Pages.Visuals, function(state)
-        ESP.Names = state
-    end)
-    
-    local healthToggle = UI.createToggle("Show Health", ui.Pages.Visuals, function(state)
-        ESP.Health = state
-    end)
-    
-    local distanceToggle = UI.createToggle("Show Distance", ui.Pages.Visuals, function(state)
-        ESP.Distance = state
-    end)
-    
-    local espTeamCheckToggle = UI.createToggle("Team Check", ui.Pages.Visuals, function(state)
-        ESP.TeamCheck = state
-    end)
-    
-    -- Set initial states
-    espToggle.SetState(false)
-    boxesToggle.SetState(true)
-    namesToggle.SetState(true)
-    healthToggle.SetState(true)
-    distanceToggle.SetState(true)
-    espTeamCheckToggle.SetState(true)
     
     -- Initialize Aimbot
     local Aimbot = {
