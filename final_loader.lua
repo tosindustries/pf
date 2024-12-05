@@ -867,14 +867,66 @@ local function startScript()
         end)
     end)
     
-    -- Get closest player to cursor within FOV
+    -- Silent aim implementation
+    local oldNamecall
+    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local args = {...}
+        local method = getnamecallmethod()
+        
+        if aimbotSilent and (method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRay" or method == "Raycast") and not checkcaller() then
+            local target = getClosestPlayerToCursor()
+            if target and target.Part then
+                -- Double check FOV
+                if not isWithinFOVCircle(target.ScreenPosition) then
+                    return oldNamecall(self, unpack(args))
+                end
+                
+                -- Force hit the target part
+                if method == "Raycast" then
+                    return {
+                        Instance = target.Part,
+                        Position = target.Part.Position,
+                        Normal = (Camera.CFrame.Position - target.Part.Position).Unit,
+                        Material = target.Part.Material
+                    }
+                else
+                    -- For FindPartOnRay methods
+                    return target.Part, target.Part.Position
+                end
+            end
+        end
+        
+        return oldNamecall(self, unpack(args))
+    end)
+
+    -- Improved hit registration
+    local oldIndex = nil
+    oldIndex = hookmetamethod(game, "__index", function(self, index)
+        if aimbotSilent and not checkcaller() then
+            if index == "Hit" or index == "Target" then
+                local target = getClosestPlayerToCursor()
+                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) then
+                    return target.Part
+                end
+            elseif index == "HitPos" then
+                local target = getClosestPlayerToCursor()
+                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) then
+                    return target.Part.Position
+                end
+            end
+        end
+        
+        return oldIndex(self, index)
+    end)
+
+    -- Improved target selection
     local function getClosestPlayerToCursor()
         local closestPlayer = nil
         local shortestDistance = math.huge
         local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
         for _, player in pairs(Players:GetPlayers()) do
-            if player == LocalPlayer then continue end
+            if not player or player == LocalPlayer then continue end
             if aimbotTeamCheck and player.Team == LocalPlayer.Team then continue end
 
             local character = player.Character
@@ -886,13 +938,10 @@ local function startScript()
             local part = character:FindFirstChild(aimbotTargetPart)
             if not part then continue end
 
-            if aimbotVisibilityCheck and not (isVisible(part) or canWallbang(Camera.CFrame.Position, part)) then continue end
-
             local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
             if not onScreen then continue end
 
             local screenPos = Vector2.new(pos.X, pos.Y)
-            -- Check if target is within FOV circle
             if not isWithinFOVCircle(screenPos) then continue end
 
             local distance = (screenPos - screenCenter).Magnitude
@@ -912,76 +961,6 @@ local function startScript()
         return closestPlayer
     end
 
-    -- Improved prediction with acceleration and gravity
-    local function improvedPrediction(part, velocity)
-        if not part or not aimbotPrediction then return part.Position end
-        
-        local distance = (part.Position - Camera.CFrame.Position).Magnitude
-        local timeToHit = distance / velocity
-        
-        -- Get target velocity and acceleration
-        local targetVelocity = part.Velocity
-        local targetAcceleration = Vector3.new(0, -workspace.Gravity, 0) -- Account for gravity
-        
-        -- Calculate predicted position with acceleration
-        local predictedPosition = part.Position + 
-            (targetVelocity * timeToHit) + 
-            (0.5 * targetAcceleration * timeToHit * timeToHit)
-        
-        return predictedPosition
-    end
-
-    -- Improved silent aim implementation
-    local oldNamecall
-    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local args = {...}
-        local method = getnamecallmethod()
-        
-        if aimbotSilent and (method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRay" or method == "Raycast") and not checkcaller() then
-            local target = getClosestPlayerToCursor()
-            if target and target.Part then
-                -- Double check FOV
-                if not isWithinFOVCircle(target.ScreenPosition) then
-                    return oldNamecall(self, unpack(args))
-                end
-                
-                local predictedPos = improvedPrediction(target.Part, 1000)
-                
-                -- Calculate aim angle with random spread
-                local aimCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
-                if aimbotSilent then
-                    -- Add slight randomization for more realistic spread
-                    local spread = (math.random() - 0.5) * 0.1
-                    aimCFrame = aimCFrame * CFrame.Angles(spread, spread, 0)
-                end
-                
-                args[1] = Ray.new(Camera.CFrame.Position, aimCFrame.LookVector * 1000)
-            end
-        end
-        
-        return oldNamecall(self, unpack(args))
-    end)
-
-    -- Improved hit registration with FOV check
-    local oldIndex = nil
-    oldIndex = hookmetamethod(game, "__index", function(self, index)
-        if aimbotSilent and not checkcaller() then
-            if index == "Hit" or index == "Target" then
-                local target = getClosestPlayerToCursor()
-                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) then
-                    return target.Part
-                end
-            elseif index == "HitPos" then
-                local target = getClosestPlayerToCursor()
-                if target and target.Part and isWithinFOVCircle(target.ScreenPosition) then
-                    return improvedPrediction(target.Part, 1000)
-                end
-            end
-        end
-        
-        return oldIndex(self, index)
-    end)
-    
     -- Cleanup
     Library:OnUnload(function()
         if fovCircle then
