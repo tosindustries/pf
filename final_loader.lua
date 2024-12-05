@@ -115,8 +115,186 @@ local function startScript()
     local ESPFeaturesGroup = Tabs.Visuals:AddRightGroupbox("ESP Features")
     local ESPSettingsGroup = Tabs.Visuals:AddLeftGroupbox("ESP Settings")
     
-    -- ESP Main Settings
-    ESPMainGroup:AddToggle('ESPEnabled', {
+    -- Add UI Settings tab
+    ThemeManager:ApplyToTab(Tabs['UI Settings'])
+    
+    -- Main Aimbot Settings
+    local Toggles = {
+        AimbotEnabled = MainAimbotGroup:AddToggle('AimbotEnabled', {
+            Text = 'Enable Aimbot',
+            Default = false,
+            Callback = function(Value)
+                aimbotActive = Value
+            end
+        }),
+        
+        TeamCheck = MainAimbotGroup:AddToggle('TeamCheck', {
+            Text = 'Team Check',
+            Default = true,
+            Callback = function(Value)
+                aimbotTeamCheck = Value
+            end
+        }),
+        
+        VisibilityCheck = MainAimbotGroup:AddToggle('VisibilityCheck', {
+            Text = 'Visibility Check',
+            Default = true,
+            Callback = function(Value)
+                aimbotVisibilityCheck = Value
+            end
+        })
+    }
+    
+    -- Targeting Settings
+    local Options = {
+        TargetMode = TargetingGroup:AddDropdown('TargetMode', {
+            Text = 'Target Mode',
+            Default = 'Distance',
+            Values = {'Distance', 'Health', 'Random'},
+            Callback = function(Value)
+                aimbotTargetMode = Value
+            end
+        }),
+        
+        TargetPart = TargetingGroup:AddDropdown('TargetPart', {
+            Text = 'Target Part',
+            Default = 'Head',
+            Values = {'Head', 'HumanoidRootPart', 'Torso'},
+            Callback = function(Value)
+                aimbotTargetPart = Value
+            end
+        })
+    }
+    
+    -- Behavior Settings
+    Toggles.SilentAim = BehaviorGroup:AddToggle('SilentAim', {
+        Text = 'Silent Aim',
+        Default = false,
+        Callback = function(Value)
+            aimbotSilent = Value
+        end
+    })
+    
+    Toggles.AutoShoot = BehaviorGroup:AddToggle('AutoShoot', {
+        Text = 'Auto Shoot',
+        Default = false,
+        Callback = function(Value)
+            aimbotAutoShoot = Value
+        end
+    })
+    
+    Toggles.TriggerBot = BehaviorGroup:AddToggle('TriggerBot', {
+        Text = 'Trigger Bot',
+        Default = false,
+        Callback = function(Value)
+            aimbotTriggerBot = Value
+        end
+    })
+    
+    Options.TriggerDelay = BehaviorGroup:AddSlider('TriggerDelay', {
+        Text = 'Trigger Delay (ms)',
+        Default = 0,
+        Min = 0,
+        Max = 500,
+        Rounding = 0,
+        Callback = function(Value)
+            aimbotTriggerBotDelay = Value / 1000
+        end
+    })
+    
+    -- Smoothing Settings
+    Toggles.Smoothing = SmoothingGroup:AddToggle('Smoothing', {
+        Text = 'Use Smoothing',
+        Default = true,
+        Callback = function(Value)
+            aimbotSmoothing = Value
+        end
+    })
+    
+    Options.SmoothingAmount = SmoothingGroup:AddSlider('SmoothingAmount', {
+        Text = 'Smoothing Amount',
+        Default = 2,
+        Min = 1,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(Value)
+            aimbotSmoothingAmount = Value
+        end
+    })
+    
+    -- Prediction Settings
+    Toggles.Prediction = PredictionGroup:AddToggle('Prediction', {
+        Text = 'Enable Prediction',
+        Default = true,
+        Callback = function(Value)
+            aimbotPrediction = Value
+        end
+    })
+    
+    Options.PredictionAmount = PredictionGroup:AddSlider('PredictionAmount', {
+        Text = 'Prediction Amount',
+        Default = 0.165,
+        Min = 0,
+        Max = 1,
+        Rounding = 3,
+        Callback = function(Value)
+            aimbotPredictionAmount = Value
+        end
+    })
+    
+    -- FOV Settings
+    Toggles.ShowFOV = FOVGroup:AddToggle('ShowFOV', {
+        Text = 'Show FOV',
+        Default = true,
+        Callback = function(Value)
+            showFOV = Value
+            if fovCircle then
+                fovCircle.Visible = Value
+            end
+        end
+    })
+    
+    Options.FOVSize = FOVGroup:AddSlider('FOVSize', {
+        Text = 'FOV Size',
+        Default = 120,
+        Min = 30,
+        Max = 800,
+        Rounding = 0,
+        Callback = function(Value)
+            fovSize = Value
+            if fovCircle then
+                fovCircle.Radius = Value
+            end
+        end
+    })
+    
+    -- Advanced Settings
+    Toggles.Wallbang = AdvancedGroup:AddToggle('Wallbang', {
+        Text = 'Wallbang',
+        Default = false,
+        Callback = function(Value)
+            aimbotWallbang = Value
+        end
+    })
+    
+    Toggles.JumpCheck = AdvancedGroup:AddToggle('JumpCheck', {
+        Text = 'Jump Check',
+        Default = false,
+        Callback = function(Value)
+            aimbotJumpCheck = Value
+        end
+    })
+    
+    Toggles.DisableOnJump = AdvancedGroup:AddToggle('DisableOnJump', {
+        Text = 'Disable While Jumping',
+        Default = false,
+        Callback = function(Value)
+            aimbotDisableOnJump = Value
+        end
+    })
+    
+    -- ESP Settings
+    Toggles.ESPEnabled = ESPMainGroup:AddToggle('ESPEnabled', {
         Text = 'Enable ESP',
         Default = false,
         Callback = function(Value)
@@ -124,7 +302,7 @@ local function startScript()
         end
     })
     
-    ESPMainGroup:AddToggle('ESPTeamCheck', {
+    Toggles.ESPTeamCheck = ESPMainGroup:AddToggle('ESPTeamCheck', {
         Text = 'Team Check',
         Default = true,
         Callback = function(Value)
@@ -132,7 +310,7 @@ local function startScript()
         end
     })
     
-    ESPMainGroup:AddToggle('ESPTeamColor', {
+    Toggles.ESPTeamColor = ESPMainGroup:AddToggle('ESPTeamColor', {
         Text = 'Team Color',
         Default = true,
         Callback = function(Value)
@@ -141,7 +319,7 @@ local function startScript()
     })
     
     -- ESP Features
-    ESPFeaturesGroup:AddToggle('ESPBoxes', {
+    Toggles.ESPBoxes = ESPFeaturesGroup:AddToggle('ESPBoxes', {
         Text = 'Boxes',
         Default = false,
         Callback = function(Value)
@@ -149,7 +327,7 @@ local function startScript()
         end
     })
     
-    ESPFeaturesGroup:AddToggle('ESPHealth', {
+    Toggles.ESPHealth = ESPFeaturesGroup:AddToggle('ESPHealth', {
         Text = 'Health Bar',
         Default = false,
         Callback = function(Value)
@@ -157,7 +335,7 @@ local function startScript()
         end
     })
     
-    ESPFeaturesGroup:AddToggle('ESPNames', {
+    Toggles.ESPNames = ESPFeaturesGroup:AddToggle('ESPNames', {
         Text = 'Names',
         Default = false,
         Callback = function(Value)
@@ -165,7 +343,7 @@ local function startScript()
         end
     })
     
-    ESPFeaturesGroup:AddToggle('ESPDistance', {
+    Toggles.ESPDistance = ESPFeaturesGroup:AddToggle('ESPDistance', {
         Text = 'Distance',
         Default = false,
         Callback = function(Value)
@@ -173,7 +351,7 @@ local function startScript()
         end
     })
     
-    ESPFeaturesGroup:AddToggle('ESPTracers', {
+    Toggles.ESPTracers = ESPFeaturesGroup:AddToggle('ESPTracers', {
         Text = 'Tracers',
         Default = false,
         Callback = function(Value)
@@ -181,7 +359,7 @@ local function startScript()
         end
     })
     
-    ESPFeaturesGroup:AddToggle('ESPSkeleton', {
+    Toggles.ESPSkeleton = ESPFeaturesGroup:AddToggle('ESPSkeleton', {
         Text = 'Skeleton',
         Default = false,
         Callback = function(Value)
@@ -190,7 +368,7 @@ local function startScript()
     })
     
     -- ESP Settings
-    ESPSettingsGroup:AddSlider('ESPMaxDistance', {
+    Options.ESPMaxDistance = ESPSettingsGroup:AddSlider('ESPMaxDistance', {
         Text = 'Max Distance',
         Default = 1000,
         Min = 100,
@@ -201,7 +379,7 @@ local function startScript()
         end
     })
     
-    ESPSettingsGroup:AddSlider('ESPTextSize', {
+    Options.ESPTextSize = ESPSettingsGroup:AddSlider('ESPTextSize', {
         Text = 'Text Size',
         Default = 13,
         Min = 8,
@@ -212,7 +390,7 @@ local function startScript()
         end
     })
     
-    ESPSettingsGroup:AddSlider('ESPBoxThickness', {
+    Options.ESPBoxThickness = ESPSettingsGroup:AddSlider('ESPBoxThickness', {
         Text = 'Box Thickness',
         Default = 2,
         Min = 1,
@@ -223,40 +401,57 @@ local function startScript()
         end
     })
     
-    -- Setup ESP for teams
-    local function setupESP()
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                ESP:Add(player.Character, {
-                    Name = player.Name,
-                    Player = player,
-                    PrimaryPart = player.Character:FindFirstChild("HumanoidRootPart")
-                })
-            end
-        end
-    end
+    -- Save references to all UI elements
+    Library.Toggles = Toggles
+    Library.Options = Options
     
-    -- Setup ESP when players join
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function(character)
-            ESP:Add(character, {
-                Name = player.Name,
-                Player = player,
-                PrimaryPart = character:WaitForChild("HumanoidRootPart")
-            })
-        end)
-    end)
-    
-    -- Initial ESP setup
+    -- Fix ESP initialization
+    ESP.Players = true  -- Enable player ESP
+    ESP.Boxes = true
+    ESP.Names = true
+    ESP.Health = true
+    ESP.Distance = true
+    ESP.Tracers = true
+    ESP.TeamColor = true
+    ESP.TeamMates = false  -- Don't show ESP for teammates by default
+
+    -- Add proper ESP container
+    local container = Instance.new("Folder")
+    container.Name = "ESP_Container"
+    container.Parent = game.CoreGui
+
+    -- Initialize ESP for existing players
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            ESP:Add(player.Character, {
+        if player ~= LocalPlayer then
+            ESP:Add(player, {
                 Name = player.Name,
                 Player = player,
-                PrimaryPart = player.Character:FindFirstChild("HumanoidRootPart")
+                PrimaryPart = "HumanoidRootPart",
+                Color = player.TeamColor.Color,
+                IsEnabled = "ESP_Enabled"
             })
         end
     end
+
+    -- Handle new players
+    Players.PlayerAdded:Connect(function(player)
+        ESP:Add(player, {
+            Name = player.Name,
+            Player = player,
+            PrimaryPart = "HumanoidRootPart",
+            Color = player.TeamColor.Color,
+            IsEnabled = "ESP_Enabled"
+        })
+    end)
+
+    -- Handle players leaving
+    Players.PlayerRemoving:Connect(function(player)
+        ESP:Remove(player)
+    end)
+
+    -- Update ESP settings
+    ESP.FaceCamera = true  -- Makes boxes face the camera
+    ESP.AutoRemove = true  -- Automatically removes ESP when player leaves
     
     -- Aimbot Functions
     local function isVisible(part)
