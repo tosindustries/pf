@@ -2,46 +2,14 @@ local function startScript()
     if not game:IsLoaded() then game.Loaded:Wait() end
     if game.PlaceId ~= 292439477 then return false end
     
+    -- Core Services
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    local CoreGui = game:GetService("CoreGui")
-    local TweenService = game:GetService("TweenService")
-    local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
-    local Mouse = LocalPlayer:GetMouse()
+    local LocalPlayer = Players.LocalPlayer
     
-    -- Initialize variables
-    local aimbotActive = false
-    local lastToggleTime = 0
-    local TOGGLE_COOLDOWN = 0.3
-    
-    -- Create drawings
-    local function createDrawings()
-        local fovCircle = Drawing.new("Circle")
-        fovCircle.Thickness = 1.5
-        fovCircle.NumSides = 100
-        fovCircle.Radius = 100
-        fovCircle.Filled = false
-        fovCircle.Visible = false
-        fovCircle.ZIndex = 999
-        fovCircle.Transparency = 1
-        fovCircle.Color = Color3.fromRGB(255, 255, 255)
-        fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        
-        local snapLine = Drawing.new("Line")
-        snapLine.Thickness = 1.5
-        snapLine.Visible = false
-        snapLine.ZIndex = 999
-        snapLine.Transparency = 1
-        snapLine.Color = Color3.fromRGB(255, 0, 0)
-        
-        return fovCircle, snapLine
-    end
-    
-    local fovCircle, snapLine = createDrawings()
-    
-    -- UI System
+    -- Create UI System
     local UI = {}
     
     function UI.new()
@@ -136,25 +104,6 @@ local function startScript()
         menuLayout.Padding = UDim.new(0, 10)
         menuLayout.Parent = menuButtons
         
-        local function createMenuButton(name, order)
-            local button = Instance.new("TextButton")
-            button.Name = name .. "Button"
-            button.Size = UDim2.new(0, 70, 1, 0)
-            button.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
-            button.Text = name
-            button.TextColor3 = Color3.fromRGB(200, 200, 200)
-            button.TextSize = 14
-            button.Font = Enum.Font.GothamSemibold
-            button.LayoutOrder = order
-            button.Parent = menuButtons
-            
-            local buttonCorner = Instance.new("UICorner")
-            buttonCorner.CornerRadius = UDim.new(0, 6)
-            buttonCorner.Parent = button
-            
-            return button
-        end
-        
         local contentContainer = Instance.new("Frame")
         contentContainer.Name = "ContentContainer"
         contentContainer.Size = UDim2.new(1, -20, 1, -95)
@@ -191,9 +140,9 @@ local function startScript()
         end
         
         local buttons = {
-            Aimbot = createMenuButton("Aimbot", 1),
-            Visuals = createMenuButton("Visuals", 2),
-            Settings = createMenuButton("Settings", 3)
+            Aimbot = UI.createMenuButton("Aimbot", 1, menuButtons),
+            Visuals = UI.createMenuButton("Visuals", 2, menuButtons),
+            Settings = UI.createMenuButton("Settings", 3, menuButtons)
         }
         
         local currentPage = "Aimbot"
@@ -254,6 +203,25 @@ local function startScript()
             MainFrame = mainFrame,
             Pages = pages
         }
+    end
+    
+    function UI.createMenuButton(text, order, parent)
+        local button = Instance.new("TextButton")
+        button.Name = text .. "Button"
+        button.Size = UDim2.new(0, 70, 1, 0)
+        button.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+        button.Text = text
+        button.TextColor3 = Color3.fromRGB(200, 200, 200)
+        button.TextSize = 14
+        button.Font = Enum.Font.GothamSemibold
+        button.LayoutOrder = order
+        button.Parent = parent
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        return button
     end
     
     function UI.createToggle(text, parent, callback)
@@ -419,6 +387,36 @@ local function startScript()
     
     -- Create UI first
     local ui = UI.new()
+    
+    -- Initialize variables
+    local aimbotActive = false
+    local lastToggleTime = 0
+    local TOGGLE_COOLDOWN = 0.3
+    
+    -- Create drawings
+    local function createDrawings()
+        local fovCircle = Drawing.new("Circle")
+        fovCircle.Thickness = 1.5
+        fovCircle.NumSides = 100
+        fovCircle.Radius = 100
+        fovCircle.Filled = false
+        fovCircle.Visible = false
+        fovCircle.ZIndex = 999
+        fovCircle.Transparency = 1
+        fovCircle.Color = Color3.fromRGB(255, 255, 255)
+        fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        
+        local snapLine = Drawing.new("Line")
+        snapLine.Thickness = 1.5
+        snapLine.Visible = false
+        snapLine.ZIndex = 999
+        snapLine.Transparency = 1
+        snapLine.Color = Color3.fromRGB(255, 0, 0)
+        
+        return fovCircle, snapLine
+    end
+    
+    local fovCircle, snapLine = createDrawings()
     
     -- ESP System
     local ESP = {
