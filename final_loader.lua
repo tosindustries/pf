@@ -3,73 +3,43 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
 -- Locals
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Load UI Library
-local Library = nil
-local success, result = pcall(function()
-    return loadstring(game:HttpGet('https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua'))()
-end)
-
-if not success then
-    warn("Failed to load UI Library:", result)
-    return
+-- Wait for game to load
+if not game:IsLoaded() then
+    game.Loaded:Wait()
 end
 
-Library = result
+-- Load UI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua"))()
+if not Library then
+    warn("Failed to load UI Library")
+    return
+end
 
 -- Create Window
-success, result = pcall(function()
-    return Library:CreateWindow({
-        Title = "Phantom Forces",
-        Center = true,
-        AutoShow = true
-    })
-end)
-
-if not success then
-    warn("Failed to create window:", result)
-    return
-end
-
-local Window = result
+local Window = Library:CreateWindow({
+    Title = "Phantom Forces",
+    Center = true,
+    AutoShow = true
+})
 
 -- Create Tabs
-local Tabs = {}
-success, result = pcall(function()
-    return {
-        Main = Window:AddTab("Main"),
-        Visuals = Window:AddTab("Visuals"),
-        ['UI Settings'] = Window:AddTab("UI Settings")
-    }
-end)
-
-if not success then
-    warn("Failed to create tabs:", result)
-    return
-end
-
-Tabs = result
+local Tabs = {
+    Main = Window:AddTab("Main"),
+    Visuals = Window:AddTab("Visuals"),
+    ['UI Settings'] = Window:AddTab("UI Settings")
+}
 
 -- Menu Group
-local MenuGroup = nil
-success, result = pcall(function()
-    local group = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-    group:AddButton('Unload', function() 
-        Library:Unload()
-    end)
-    return group
+local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+MenuGroup:AddButton('Unload', function() 
+    Library:Unload()
 end)
-
-if not success then
-    warn("Failed to create menu group:", result)
-    return
-end
-
-MenuGroup = result
 
 -- Menu Toggle
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -101,16 +71,10 @@ local ESPObjects = {}
 -- Get PF Character
 local function GetPFCharacter(player)
     if not player then return nil end
-    local success, result = pcall(function()
-        if not ReplicatedStorage then return nil end
-        local chars = ReplicatedStorage:FindFirstChild("Character")
-        if chars and chars:FindFirstChild(player.Name) then
-            return chars[player.Name]
-        end
-        return nil
-    end)
-    if success and result then
-        return result
+    
+    local chars = ReplicatedStorage:FindFirstChild("Character")
+    if chars and chars:FindFirstChild(player.Name) then
+        return chars[player.Name]
     end
     return nil
 end
@@ -118,15 +82,10 @@ end
 -- Get PF Health
 local function GetPFHealth(character)
     if not character then return 0, 100 end
-    local success, result = pcall(function()
-        local health = character:FindFirstChild("Health")
-        if health then
-            return health.Value, 100
-        end
-        return 0, 100
-    end)
-    if success then
-        return result, 100
+    
+    local health = character:FindFirstChild("Health")
+    if health then
+        return health.Value, 100
     end
     return 0, 100
 end
@@ -135,23 +94,17 @@ end
 local function CreateESPObject(player)
     if not player or player == LocalPlayer then return end
     
-    local espObject = {}
-    local success = pcall(function()
-        espObject.Player = player
-        espObject.Box = Drawing.new("Square")
-        espObject.BoxOutline = Drawing.new("Square")
-        espObject.Name = Drawing.new("Text")
-        espObject.Distance = Drawing.new("Text")
-        espObject.HealthBar = Drawing.new("Square")
-        espObject.HealthBarOutline = Drawing.new("Square")
-        espObject.Tracer = Drawing.new("Line")
-        espObject.TracerOutline = Drawing.new("Line")
-    end)
-    
-    if not success then
-        warn("Failed to create ESP object for player:", player.Name)
-        return nil
-    end
+    local espObject = {
+        Player = player,
+        Box = Drawing.new("Square"),
+        BoxOutline = Drawing.new("Square"),
+        Name = Drawing.new("Text"),
+        Distance = Drawing.new("Text"),
+        HealthBar = Drawing.new("Square"),
+        HealthBarOutline = Drawing.new("Square"),
+        Tracer = Drawing.new("Line"),
+        TracerOutline = Drawing.new("Line")
+    }
     
     -- Box Settings
     espObject.Box.Thickness = ESPSettings.BoxThickness
@@ -281,86 +234,76 @@ local function UpdateESPObject(espObject)
     local color = ESPSettings.TeamColor and player.TeamColor.Color or Color3.new(1, 1, 1)
     
     -- Update Box
-    pcall(function()
-        if ESPSettings.ShowBox then
-            espObject.Box.Size = boxSize
-            espObject.Box.Position = boxPosition
-            espObject.Box.Color = color
-            espObject.Box.Visible = true
-            
-            espObject.BoxOutline.Size = boxSize
-            espObject.BoxOutline.Position = boxPosition
-            espObject.BoxOutline.Visible = true
-        else
-            espObject.Box.Visible = false
-            espObject.BoxOutline.Visible = false
-        end
-    end)
+    if ESPSettings.ShowBox then
+        espObject.Box.Size = boxSize
+        espObject.Box.Position = boxPosition
+        espObject.Box.Color = color
+        espObject.Box.Visible = true
+        
+        espObject.BoxOutline.Size = boxSize
+        espObject.BoxOutline.Position = boxPosition
+        espObject.BoxOutline.Visible = true
+    else
+        espObject.Box.Visible = false
+        espObject.BoxOutline.Visible = false
+    end
     
     -- Update Name
-    pcall(function()
-        if ESPSettings.ShowName then
-            espObject.Name.Text = player.Name
-            espObject.Name.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y - 16)
-            espObject.Name.Color = color
-            espObject.Name.Visible = true
-        else
-            espObject.Name.Visible = false
-        end
-    end)
+    if ESPSettings.ShowName then
+        espObject.Name.Text = player.Name
+        espObject.Name.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y - 16)
+        espObject.Name.Color = color
+        espObject.Name.Visible = true
+    else
+        espObject.Name.Visible = false
+    end
     
     -- Update Distance
-    pcall(function()
-        if ESPSettings.ShowDistance then
-            espObject.Distance.Text = string.format("%.0f studs", distance)
-            espObject.Distance.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
-            espObject.Distance.Color = color
-            espObject.Distance.Visible = true
-        else
-            espObject.Distance.Visible = false
-        end
-    end)
+    if ESPSettings.ShowDistance then
+        espObject.Distance.Text = string.format("%.0f studs", distance)
+        espObject.Distance.Position = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
+        espObject.Distance.Color = color
+        espObject.Distance.Visible = true
+    else
+        espObject.Distance.Visible = false
+    end
     
     -- Update Health Bar
-    pcall(function()
-        if ESPSettings.ShowHealth then
-            local healthPercent = health / maxHealth
-            local barSize = Vector2.new(2, boxSize.Y * healthPercent)
-            local barPosition = Vector2.new(boxPosition.X - 5, boxPosition.Y + boxSize.Y * (1 - healthPercent))
-            
-            espObject.HealthBar.Size = barSize
-            espObject.HealthBar.Position = barPosition
-            espObject.HealthBar.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
-            espObject.HealthBar.Visible = true
-            
-            espObject.HealthBarOutline.Size = Vector2.new(4, boxSize.Y)
-            espObject.HealthBarOutline.Position = Vector2.new(boxPosition.X - 6, boxPosition.Y)
-            espObject.HealthBarOutline.Visible = true
-        else
-            espObject.HealthBar.Visible = false
-            espObject.HealthBarOutline.Visible = false
-        end
-    end)
+    if ESPSettings.ShowHealth then
+        local healthPercent = health / maxHealth
+        local barSize = Vector2.new(2, boxSize.Y * healthPercent)
+        local barPosition = Vector2.new(boxPosition.X - 5, boxPosition.Y + boxSize.Y * (1 - healthPercent))
+        
+        espObject.HealthBar.Size = barSize
+        espObject.HealthBar.Position = barPosition
+        espObject.HealthBar.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
+        espObject.HealthBar.Visible = true
+        
+        espObject.HealthBarOutline.Size = Vector2.new(4, boxSize.Y)
+        espObject.HealthBarOutline.Position = Vector2.new(boxPosition.X - 6, boxPosition.Y)
+        espObject.HealthBarOutline.Visible = true
+    else
+        espObject.HealthBar.Visible = false
+        espObject.HealthBarOutline.Visible = false
+    end
     
     -- Update Tracer
-    pcall(function()
-        if ESPSettings.ShowTracer then
-            local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-            local tracerStart = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
-            
-            espObject.Tracer.From = screenCenter
-            espObject.Tracer.To = tracerStart
-            espObject.Tracer.Color = color
-            espObject.Tracer.Visible = true
-            
-            espObject.TracerOutline.From = screenCenter
-            espObject.TracerOutline.To = tracerStart
-            espObject.TracerOutline.Visible = true
-        else
-            espObject.Tracer.Visible = false
-            espObject.TracerOutline.Visible = false
-        end
-    end)
+    if ESPSettings.ShowTracer then
+        local screenCenter = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+        local tracerStart = Vector2.new(boxPosition.X + boxSize.X/2, boxPosition.Y + boxSize.Y)
+        
+        espObject.Tracer.From = screenCenter
+        espObject.Tracer.To = tracerStart
+        espObject.Tracer.Color = color
+        espObject.Tracer.Visible = true
+        
+        espObject.TracerOutline.From = screenCenter
+        espObject.TracerOutline.To = tracerStart
+        espObject.TracerOutline.Visible = true
+    else
+        espObject.Tracer.Visible = false
+        espObject.TracerOutline.Visible = false
+    end
 end
 
 -- Update all ESP Objects
@@ -391,123 +334,100 @@ end)
 RunService.RenderStepped:Connect(UpdateESP)
 
 -- Add ESP UI elements
-local ESPTab = nil
-success, result = pcall(function()
-    return Tabs.Visuals:AddLeftGroupbox('ESP Settings')
-end)
+local ESPTab = Tabs.Visuals:AddLeftGroupbox('ESP Settings')
 
-if not success then
-    warn("Failed to create ESP tab:", result)
-    return
-end
+ESPTab:AddToggle("ESPEnabled", {
+    Text = "Enable ESP",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.Enabled = Value
+    end
+})
 
-ESPTab = result
+ESPTab:AddToggle("ESPTeamCheck", {
+    Text = "Team Check",
+    Default = true,
+    Callback = function(Value)
+        ESPSettings.TeamCheck = Value
+    end
+})
 
--- Add ESP toggles
-success = pcall(function()
-    ESPTab:AddToggle("ESPEnabled", {
-        Text = "Enable ESP",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.Enabled = Value
-        end
-    })
+ESPTab:AddToggle("ESPTeamColor", {
+    Text = "Team Color",
+    Default = true,
+    Callback = function(Value)
+        ESPSettings.TeamColor = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPTeamCheck", {
-        Text = "Team Check",
-        Default = true,
-        Callback = function(Value)
-            ESPSettings.TeamCheck = Value
-        end
-    })
+ESPTab:AddToggle("ESPBox", {
+    Text = "Show Box",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowBox = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPTeamColor", {
-        Text = "Team Color",
-        Default = true,
-        Callback = function(Value)
-            ESPSettings.TeamColor = Value
-        end
-    })
+ESPTab:AddToggle("ESPName", {
+    Text = "Show Name",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowName = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPBox", {
-        Text = "Show Box",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowBox = Value
-        end
-    })
+ESPTab:AddToggle("ESPHealth", {
+    Text = "Show Health",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowHealth = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPName", {
-        Text = "Show Name",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowName = Value
-        end
-    })
+ESPTab:AddToggle("ESPDistance", {
+    Text = "Show Distance",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowDistance = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPHealth", {
-        Text = "Show Health",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowHealth = Value
-        end
-    })
+ESPTab:AddToggle("ESPTracer", {
+    Text = "Show Tracer",
+    Default = false,
+    Callback = function(Value)
+        ESPSettings.ShowTracer = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPDistance", {
-        Text = "Show Distance",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowDistance = Value
-        end
-    })
+ESPTab:AddSlider("ESPMaxDistance", {
+    Text = "Max Distance",
+    Default = 1000,
+    Min = 100,
+    Max = 5000,
+    Rounding = 0,
+    Callback = function(Value)
+        ESPSettings.MaxDistance = Value
+    end
+})
 
-    ESPTab:AddToggle("ESPTracer", {
-        Text = "Show Tracer",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowTracer = Value
-        end
-    })
-
-    ESPTab:AddSlider("ESPMaxDistance", {
-        Text = "Max Distance",
-        Default = 1000,
-        Min = 100,
-        Max = 5000,
-        Rounding = 0,
-        Callback = function(Value)
-            ESPSettings.MaxDistance = Value
-        end
-    })
-
-    ESPTab:AddSlider("ESPTextSize", {
-        Text = "Text Size",
-        Default = 13,
-        Min = 8,
-        Max = 24,
-        Rounding = 0,
-        Callback = function(Value)
-            ESPSettings.TextSize = Value
-            for _, espObject in pairs(ESPObjects) do
-                if espObject.Name and espObject.Distance then
-                    pcall(function()
-                        espObject.Name.Size = Value
-                        espObject.Distance.Size = Value
-                    end)
-                end
+ESPTab:AddSlider("ESPTextSize", {
+    Text = "Text Size",
+    Default = 13,
+    Min = 8,
+    Max = 24,
+    Rounding = 0,
+    Callback = function(Value)
+        ESPSettings.TextSize = Value
+        for _, espObject in pairs(ESPObjects) do
+            if espObject.Name and espObject.Distance then
+                espObject.Name.Size = Value
+                espObject.Distance.Size = Value
             end
         end
-    })
-end)
+    end
+})
 
-if not success then
-    warn("Failed to create ESP toggles")
-    return
-end
-
--- Notify on load
-pcall(function()
-    Library:Notify("Script loaded successfully!", 5)
-end)
+Library:Notify("Script loaded successfully!", 5)
 
 return true
