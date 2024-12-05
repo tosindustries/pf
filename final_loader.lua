@@ -527,6 +527,7 @@ local function startScript()
 
     -- Get PF Character
     local function GetPFCharacter(player)
+        if not player then return nil end
         local success, result = pcall(function()
             if not ReplicatedStorage then return nil end
             local chars = ReplicatedStorage:FindFirstChild("Character")
@@ -559,7 +560,7 @@ local function startScript()
 
     -- Create ESP Object
     local function CreateESPObject(player)
-        if player == LocalPlayer then return end
+        if not player or player == LocalPlayer then return end
         
         local espObject = {
             Player = player,
@@ -629,10 +630,12 @@ local function startScript()
 
     -- Update ESP Object
     local function UpdateESPObject(espObject)
-        if not ESPSettings.Enabled then
-            for _, drawing in pairs(espObject) do
-                if type(drawing) == "table" and drawing.Visible ~= nil then
-                    drawing.Visible = false
+        if not espObject or not ESPSettings.Enabled then
+            if espObject then
+                for _, drawing in pairs(espObject) do
+                    if type(drawing) == "table" and drawing.Visible ~= nil then
+                        drawing.Visible = false
+                    end
                 end
             end
             return
