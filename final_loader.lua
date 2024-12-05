@@ -159,6 +159,9 @@ local AimbotSettings = {
     HitChance = 100
 }
 
+-- Forward declare update functions
+local UpdateFOVCircle, UpdateAimbot, UpdateESP
+
 -- Create FOV Circle
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = AimbotSettings.FOVThickness
@@ -166,6 +169,23 @@ FOVCircle.Color = AimbotSettings.FOVColor
 FOVCircle.Transparency = AimbotSettings.FOVTransparency
 FOVCircle.Filled = false
 FOVCircle.Visible = false
+
+-- Update FOV Circle function
+UpdateFOVCircle = function()
+    SafeCall(function()
+        if not AimbotSettings.ShowFOV or not AimbotSettings.Enabled then
+            FOVCircle.Visible = false
+            return
+        end
+        
+        FOVCircle.Visible = true
+        FOVCircle.Radius = AimbotSettings.FOV
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FOVCircle.Color = AimbotSettings.FOVColor
+        FOVCircle.Thickness = AimbotSettings.FOVThickness
+        FOVCircle.Transparency = AimbotSettings.FOVTransparency
+    end)
+end
 
 -- Create Window
 local Window = Library:CreateWindow({
@@ -407,7 +427,27 @@ local function RemoveESPObject(player)
     ESPObjects[player] = nil
 end
 
-local function UpdateESP()
+-- Update Aimbot function
+UpdateAimbot = function()
+    if not AimbotSettings.Enabled then return end
+    
+    SafeCall(function()
+        local target = GetTarget()
+        if not target or not target.Part then return end
+        
+        local screenPoint, onScreen = Camera:WorldToViewportPoint(target.Part.Position)
+        if not onScreen then return end
+        
+        local mousePosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        local targetPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+        local delta = (targetPosition - mousePosition) / AimbotSettings.Smoothness
+        
+        mousemoverel(delta.X, delta.Y)
+    end)
+end
+
+-- Update ESP function
+UpdateESP = function()
     SafeCall(function()
         for player, espObject in pairs(ESPObjects) do
             if not player or not espObject then continue end
@@ -563,25 +603,6 @@ local function GetTarget()
     end) or closest
 end
 
--- Add this for the aimbot
-local function UpdateAimbot()
-    if not AimbotSettings.Enabled then return end
-    
-    SafeCall(function()
-        local target = GetTarget()
-        if not target or not target.Part then return end
-        
-        local screenPoint, onScreen = Camera:WorldToViewportPoint(target.Part.Position)
-        if not onScreen then return end
-        
-        local mousePosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        local targetPosition = Vector2.new(screenPoint.X, screenPoint.Y)
-        local delta = (targetPosition - mousePosition) / AimbotSettings.Smoothness
-        
-        mousemoverel(delta.X, delta.Y)
-    end)
-end
-
 -- Update the silent aim implementation
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
@@ -629,23 +650,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return oldNamecall(self, unpack(args))
 end)
 
--- Update FOV Circle function
-local function UpdateFOVCircle()
-    SafeCall(function()
-        if not AimbotSettings.ShowFOV or not AimbotSettings.Enabled then
-            FOVCircle.Visible = false
-            return
-        end
-        
-        FOVCircle.Visible = true
-        FOVCircle.Radius = AimbotSettings.FOV
-        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        FOVCircle.Color = AimbotSettings.FOVColor
-        FOVCircle.Thickness = AimbotSettings.FOVThickness
-        FOVCircle.Transparency = AimbotSettings.FOVTransparency
-    end)
-end
-
 -- Player Connections
 Players.PlayerAdded:Connect(function(player)
     SafeCall(function()
@@ -668,13 +672,16 @@ SafeCall(function()
     end
 end)
 
--- Main Loop
-RunService.RenderStepped:Connect(function()
+-- Main update loop with error handling
+local function mainLoop()
     SafeCall(function()
-        UpdateFOVCircle()
-        UpdateAimbot()
-        UpdateESP()
+        if UpdateFOVCircle then UpdateFOVCircle() end
+        if UpdateAimbot then UpdateAimbot() end
+        if UpdateESP then UpdateESP() end
     end)
-end)
+end
+
+-- Connect the main loop
+RunService.RenderStepped:Connect(mainLoop)
 
 return Library.Unloaded
