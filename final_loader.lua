@@ -102,100 +102,139 @@ end
 -- ESP Update function with debug
 UpdateESP = function()
     SafeCall(function()
+        if not ESPSettings.Enabled then return end
+        
         local characters = GetAllCharacters()
-        DebugLog("ESP Update - Found", #characters, "characters")
+        if not characters then return end
+        
+        -- Count characters properly
+        local characterCount = 0
+        for _ in pairs(characters) do
+            characterCount = characterCount + 1
+        end
+        DebugLog("ESP Update - Found", characterCount, "characters")
         
         for player, espObject in pairs(ESPObjects) do
-            if not player or not espObject then 
-                DebugLog("Invalid player or ESP object")
-                continue 
-            end
-            
-            local character = characters[player]
-            if not character then
-                DebugLog("No character found for", player.Name)
-                espObject.Box.Visible = false
-                espObject.BoxOutline.Visible = false
-                espObject.Name.Visible = false
-                espObject.Health.Visible = false
-                espObject.Distance.Visible = false
-                espObject.Tracer.Visible = false
-                continue
-            end
-            
-            if not ESPSettings.Enabled then
-                DebugLog("ESP disabled")
-                continue
-            end
-            
-            local torso = character:FindFirstChild("Torso") or character:FindFirstChild("HumanoidRootPart")
-            if not torso then
-                DebugLog("No torso found for", player.Name)
-                continue
-            end
-            
-            local vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
-            if not onScreen then
-                DebugLog(player.Name, "not on screen")
-                espObject.Box.Visible = false
-                espObject.BoxOutline.Visible = false
-                espObject.Name.Visible = false
-                espObject.Health.Visible = false
-                espObject.Distance.Visible = false
-                espObject.Tracer.Visible = false
-                continue
-            end
-            
-            -- If we got here, we can draw ESP
-            DebugLog("Drawing ESP for", player.Name)
-            
-            local distance = (Camera.CFrame.Position - torso.Position).Magnitude
-            if distance > ESPSettings.MaxDistance then
-                DebugLog(player.Name, "too far")
-                continue
-            end
-            
-            if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
-                DebugLog(player.Name, "on same team")
-                continue
-            end
-            
-            -- Update ESP elements
-            if ESPSettings.ShowBox then
-                local boxSize = Vector2.new(2000 / distance, 2500 / distance)
-                local boxPosition = Vector2.new(vector.X - boxSize.X / 2, vector.Y - boxSize.Y / 2)
+            SafeCall(function()
+                if not player or not espObject then 
+                    DebugLog("Invalid player or ESP object")
+                    return
+                end
                 
-                espObject.BoxOutline.Size = boxSize
-                espObject.BoxOutline.Position = boxPosition
-                espObject.BoxOutline.Visible = true
+                if not player:IsA("Player") then
+                    DebugLog("Invalid player object")
+                    return
+                end
                 
-                espObject.Box.Size = boxSize
-                espObject.Box.Position = boxPosition
-                espObject.Box.Color = ESPSettings.BoxColor
-                espObject.Box.Visible = true
+                local character = characters[player]
+                if not character then
+                    DebugLog("No character found for", player.Name)
+                    -- Hide ESP elements
+                    if espObject.Box and espObject.Box.Visible then
+                        espObject.Box.Visible = false
+                    end
+                    if espObject.BoxOutline and espObject.BoxOutline.Visible then
+                        espObject.BoxOutline.Visible = false
+                    end
+                    if espObject.Name and espObject.Name.Visible then
+                        espObject.Name.Visible = false
+                    end
+                    if espObject.Health and espObject.Health.Visible then
+                        espObject.Health.Visible = false
+                    end
+                    if espObject.Distance and espObject.Distance.Visible then
+                        espObject.Distance.Visible = false
+                    end
+                    if espObject.Tracer and espObject.Tracer.Visible then
+                        espObject.Tracer.Visible = false
+                    end
+                    return
+                end
                 
-                DebugLog("Drew box for", player.Name)
-            end
-            
-            if ESPSettings.ShowName then
-                espObject.Name.Text = player.Name
-                espObject.Name.Position = Vector2.new(vector.X, vector.Y - 40)
-                espObject.Name.Color = ESPSettings.TextColor
-                espObject.Name.Size = ESPSettings.TextSize
-                espObject.Name.Visible = true
+                local torso = character:FindFirstChild("Torso") or character:FindFirstChild("HumanoidRootPart")
+                if not torso then
+                    DebugLog("No torso found for", player.Name)
+                    return
+                end
                 
-                DebugLog("Drew name for", player.Name)
-            end
-            
-            if ESPSettings.ShowTracer then
-                espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                espObject.Tracer.To = Vector2.new(vector.X, vector.Y)
-                espObject.Tracer.Color = ESPSettings.TracerColor
-                espObject.Tracer.Thickness = ESPSettings.TracerThickness
-                espObject.Tracer.Visible = true
+                local vector, onScreen = nil, false
+                pcall(function()
+                    vector, onScreen = Camera:WorldToViewportPoint(torso.Position)
+                end)
                 
-                DebugLog("Drew tracer for", player.Name)
-            end
+                if not vector or not onScreen then
+                    DebugLog(player.Name, "not on screen")
+                    -- Hide ESP elements
+                    if espObject.Box then espObject.Box.Visible = false end
+                    if espObject.BoxOutline then espObject.BoxOutline.Visible = false end
+                    if espObject.Name then espObject.Name.Visible = false end
+                    if espObject.Health then espObject.Health.Visible = false end
+                    if espObject.Distance then espObject.Distance.Visible = false end
+                    if espObject.Tracer then espObject.Tracer.Visible = false end
+                    return
+                end
+                
+                -- Calculate distance
+                local distance = (Camera.CFrame.Position - torso.Position).Magnitude
+                if distance > ESPSettings.MaxDistance then
+                    DebugLog(player.Name, "too far")
+                    return
+                end
+                
+                if ESPSettings.TeamCheck and player.Team == LocalPlayer.Team then
+                    DebugLog(player.Name, "on same team")
+                    return
+                end
+                
+                -- Update ESP elements with error handling
+                if ESPSettings.ShowBox then
+                    SafeCall(function()
+                        local boxSize = Vector2.new(2000 / distance, 2500 / distance)
+                        local boxPosition = Vector2.new(vector.X - boxSize.X / 2, vector.Y - boxSize.Y / 2)
+                        
+                        if espObject.BoxOutline then
+                            espObject.BoxOutline.Size = boxSize
+                            espObject.BoxOutline.Position = boxPosition
+                            espObject.BoxOutline.Visible = true
+                        end
+                        
+                        if espObject.Box then
+                            espObject.Box.Size = boxSize
+                            espObject.Box.Position = boxPosition
+                            espObject.Box.Color = ESPSettings.BoxColor
+                            espObject.Box.Visible = true
+                        end
+                        
+                        DebugLog("Drew box for", player.Name)
+                    end)
+                end
+                
+                if ESPSettings.ShowName then
+                    SafeCall(function()
+                        if espObject.Name then
+                            espObject.Name.Text = player.Name
+                            espObject.Name.Position = Vector2.new(vector.X, vector.Y - 40)
+                            espObject.Name.Color = ESPSettings.TextColor
+                            espObject.Name.Size = ESPSettings.TextSize
+                            espObject.Name.Visible = true
+                        end
+                        DebugLog("Drew name for", player.Name)
+                    end)
+                end
+                
+                if ESPSettings.ShowTracer then
+                    SafeCall(function()
+                        if espObject.Tracer then
+                            espObject.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                            espObject.Tracer.To = Vector2.new(vector.X, vector.Y)
+                            espObject.Tracer.Color = ESPSettings.TracerColor
+                            espObject.Tracer.Thickness = ESPSettings.TracerThickness
+                            espObject.Tracer.Visible = true
+                        end
+                        DebugLog("Drew tracer for", player.Name)
+                    end)
+                end
+            end)
         end
     end)
 end
