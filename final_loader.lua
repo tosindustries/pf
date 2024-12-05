@@ -24,8 +24,156 @@ local function startScript()
         return success, result
     end
 
+    -- Notification System
+    local function createNotification(text, duration)
+        duration = duration or 3
+        
+        local notification = Instance.new("ScreenGui")
+        notification.Name = "Notification"
+        notification.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        
+        if syn and syn.protect_gui then
+            syn.protect_gui(notification)
+            notification.Parent = CoreGui
+        else
+            notification.Parent = CoreGui
+        end
+        
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0, 200, 0, 40)
+        frame.Position = UDim2.new(1, -220, 0.8, 0)
+        frame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        frame.BorderSizePixel = 0
+        frame.Parent = notification
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = frame
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -20, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamSemibold
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextWrapped = true
+        label.Parent = frame
+        
+        -- Animation
+        frame.Position = UDim2.new(1, 20, 0.8, 0)
+        game:GetService("TweenService"):Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(1, -220, 0.8, 0)
+        }):Play()
+        
+        -- Auto remove
+        task.delay(duration, function()
+            game:GetService("TweenService"):Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+                Position = UDim2.new(1, 20, 0.8, 0)
+            }):Play()
+            task.wait(0.3)
+            notification:Destroy()
+        end)
+    end
+
     -- Create UI System
     local UI = {}
+
+    function UI.createMenuButton(text, order, parent)
+        local button = Instance.new("TextButton")
+        button.Name = text .. "Button"
+        button.Size = UDim2.new(0, 70, 1, 0)
+        button.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+        button.Text = text
+        button.TextColor3 = Color3.fromRGB(200, 200, 200)
+        button.TextSize = 14
+        button.Font = Enum.Font.GothamSemibold
+        button.LayoutOrder = order
+        button.Parent = parent
+        
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 6)
+        buttonCorner.Parent = button
+        
+        return button
+    end
+
+    function UI.createToggle(text, parent, callback)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 0, 30)
+        container.BackgroundTransparency = 1
+        container.Parent = parent
+        
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 1, 0)
+        button.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        button.BorderSizePixel = 0
+        button.Text = ""
+        button.Parent = container
+        
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -50, 1, 0)
+        label.Position = UDim2.new(0, 10, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.TextSize = 14
+        label.Font = Enum.Font.GothamSemibold
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = button
+        
+        local toggle = Instance.new("Frame")
+        toggle.Size = UDim2.new(0, 40, 0, 20)
+        toggle.Position = UDim2.new(1, -45, 0.5, -10)
+        toggle.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        toggle.BorderSizePixel = 0
+        toggle.Parent = button
+        
+        local indicator = Instance.new("Frame")
+        indicator.Size = UDim2.new(0, 16, 0, 16)
+        indicator.Position = UDim2.new(0, 2, 0.5, -8)
+        indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        indicator.BorderSizePixel = 0
+        indicator.Parent = toggle
+        
+        local state = false
+        
+        local function updateToggle()
+            state = not state
+            local pos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            local color = state and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(255, 255, 255)
+            
+            indicator.Position = pos
+            indicator.BackgroundColor3 = color
+            toggle.BackgroundColor3 = state and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(30, 30, 45)
+            
+            callback(state)
+        end
+        
+        button.MouseButton1Click:Connect(updateToggle)
+        
+        return {
+            Frame = container,
+            SetState = function(newState)
+                if state ~= newState then
+                    updateToggle()
+                end
+            end,
+            GetState = function()
+                return state
+            end
+        }
+    end
+
+    function UI.createSlider(text, parent, min, max, default, callback)
+        -- ... (keep existing slider code)
+    end
+
+    function UI.createDropdown(text, parent, options, callback)
+        -- ... (keep existing dropdown code)
+    end
 
     function UI.new()
         -- Remove existing UI if it exists
@@ -552,10 +700,20 @@ local function startScript()
         ESP:RemoveObject(player)
     end)
 
+    -- Initialize variables
+    local aimbotActive = false
+    local lastToggleTime = 0
+    local TOGGLE_COOLDOWN = 0.3
+
     -- Create UI first
     local ui = UI.new()
 
     -- Create UI elements
+    local aimbotToggle = UI.createToggle("Enable Aimbot", ui.Pages.Aimbot, function(state)
+        aimbotActive = state
+        createNotification("Aimbot: " .. (state and "Enabled" or "Disabled"))
+    end)
+
     local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
         ESP:Toggle(state)
     end)
@@ -593,6 +751,7 @@ local function startScript()
     end)
 
     -- Set initial states
+    aimbotToggle.SetState(false)
     espToggle.SetState(false)
     boxToggle.SetState(true)
     healthToggle.SetState(true)
@@ -603,7 +762,7 @@ local function startScript()
     tracerOriginDropdown.SetValue("Bottom")
     distanceSlider.SetValue(1000)
 
-    -- Add toggle key for menu
+    -- Add toggle keys
     UserInputService.InputBegan:Connect(function(input)
         if input.KeyCode == Enum.KeyCode.RightShift then
             local currentTime = tick()
@@ -611,6 +770,8 @@ local function startScript()
                 ui.MainFrame.Visible = not ui.MainFrame.Visible
                 lastToggleTime = currentTime
             end
+        elseif input.KeyCode == Enum.KeyCode.E then
+            aimbotToggle.SetState(not aimbotToggle.GetState())
         end
     end)
 
