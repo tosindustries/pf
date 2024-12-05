@@ -94,6 +94,35 @@ local function startScript()
     VisualsTab.ScrollBarThickness = 4
     VisualsTab.Visible = true
 
+    -- Create Section function
+    function VisualsTab:CreateSection(name)
+        local Section = Instance.new("Frame")
+        local Title = Instance.new("TextLabel")
+        
+        Section.Name = name
+        Section.Parent = VisualsTab
+        Section.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        Section.BorderSizePixel = 0
+        Section.Size = UDim2.new(1, -20, 0, 30)
+        Section.Position = UDim2.new(0, 10, 0, #VisualsTab:GetChildren() * 35)
+        
+        Title.Name = "Title"
+        Title.Parent = Section
+        Title.BackgroundTransparency = 1
+        Title.Position = UDim2.new(0, 10, 0, 0)
+        Title.Size = UDim2.new(1, -20, 1, 0)
+        Title.Font = Enum.Font.SourceSansBold
+        Title.Text = name
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.TextSize = 14
+        Title.TextXAlignment = Enum.TextXAlignment.Left
+        
+        return Section
+    end
+
+    -- Create ESP Section
+    local ESPSection = VisualsTab:CreateSection("ESP Settings")
+
     -- ESP Settings
     local ESPSettings = {
         Enabled = false,
