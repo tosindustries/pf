@@ -15,44 +15,23 @@ local function startScript()
     local Camera = workspace.CurrentCamera
 
     -- Load UI Library
-    local Library = loadstring([[
-        -- Library code here (removed for brevity)
-        -- You need to replace this with the actual LinoriaLib code
-        -- I can't paste it directly due to length limits
-        -- Please let me know if you want me to provide the full library code
-    ]])()
-
-    if not Library then
-        warn("Failed to load UI Library")
-        return
-    end
+    local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
     -- Create Window
-    local Window = Library:CreateWindow({
-        Title = "Phantom Forces",
-        Center = true,
-        AutoShow = true
+    local Window = Rayfield:CreateWindow({
+        Name = "Phantom Forces",
+        LoadingTitle = "Loading Script...",
+        LoadingSubtitle = "by TOS Industries",
+        ConfigurationSaving = {
+            Enabled = false,
+            FolderName = nil,
+            FileName = "PFConfig"
+        }
     })
 
     -- Create Tabs
-    local Tabs = {
-        Main = Window:AddTab("Main"),
-        Visuals = Window:AddTab("Visuals"),
-        ['UI Settings'] = Window:AddTab("UI Settings")
-    }
-
-    -- Menu Group
-    local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-    MenuGroup:AddButton('Unload', function() 
-        Library:Unload()
-    end)
-
-    -- Menu Toggle
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
-            Library:Toggle()
-        end
-    end)
+    local VisualsTab = Window:CreateTab("Visuals", 4483362458)
+    local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
     -- ESP Settings
     local ESPSettings = {
@@ -71,13 +50,119 @@ local function startScript()
         TextOutline = true
     }
 
+    -- Create ESP Section
+    local ESPSection = VisualsTab:CreateSection("ESP Settings")
+
+    -- ESP Toggles
+    VisualsTab:CreateToggle({
+        Name = "Enable ESP",
+        CurrentValue = false,
+        Flag = "ESPEnabled",
+        Callback = function(Value)
+            ESPSettings.Enabled = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Team Check",
+        CurrentValue = true,
+        Flag = "TeamCheck",
+        Callback = function(Value)
+            ESPSettings.TeamCheck = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Team Color",
+        CurrentValue = true,
+        Flag = "TeamColor",
+        Callback = function(Value)
+            ESPSettings.TeamColor = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Show Box",
+        CurrentValue = false,
+        Flag = "ShowBox",
+        Callback = function(Value)
+            ESPSettings.ShowBox = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Show Name",
+        CurrentValue = false,
+        Flag = "ShowName",
+        Callback = function(Value)
+            ESPSettings.ShowName = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Show Health",
+        CurrentValue = false,
+        Flag = "ShowHealth",
+        Callback = function(Value)
+            ESPSettings.ShowHealth = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Show Distance",
+        CurrentValue = false,
+        Flag = "ShowDistance",
+        Callback = function(Value)
+            ESPSettings.ShowDistance = Value
+        end
+    })
+
+    VisualsTab:CreateToggle({
+        Name = "Show Tracer",
+        CurrentValue = false,
+        Flag = "ShowTracer",
+        Callback = function(Value)
+            ESPSettings.ShowTracer = Value
+        end
+    })
+
+    -- ESP Sliders
+    VisualsTab:CreateSlider({
+        Name = "Max Distance",
+        Range = {100, 5000},
+        Increment = 100,
+        Suffix = "studs",
+        CurrentValue = 1000,
+        Flag = "MaxDistance",
+        Callback = function(Value)
+            ESPSettings.MaxDistance = Value
+        end
+    })
+
+    VisualsTab:CreateSlider({
+        Name = "Text Size",
+        Range = {8, 24},
+        Increment = 1,
+        Suffix = "px",
+        CurrentValue = 13,
+        Flag = "TextSize",
+        Callback = function(Value)
+            ESPSettings.TextSize = Value
+            for _, espObject in pairs(ESPObjects) do
+                if espObject.Name and espObject.Distance then
+                    espObject.Name.Size = Value
+                    espObject.Distance.Size = Value
+                end
+            end
+        end
+    })
+
     -- ESP Objects
     local ESPObjects = {}
 
     -- Get PF Character
     local function GetPFCharacter(player)
         if not player then return nil end
-        
         local chars = ReplicatedStorage:FindFirstChild("Character")
         if chars and chars:FindFirstChild(player.Name) then
             return chars[player.Name]
@@ -88,7 +173,6 @@ local function startScript()
     -- Get PF Health
     local function GetPFHealth(character)
         if not character then return 0, 100 end
-        
         local health = character:FindFirstChild("Health")
         if health then
             return health.Value, 100
@@ -339,102 +423,13 @@ local function startScript()
     -- Update ESP
     RunService.RenderStepped:Connect(UpdateESP)
 
-    -- Add ESP UI elements
-    local ESPTab = Tabs.Visuals:AddLeftGroupbox('ESP Settings')
-
-    ESPTab:AddToggle("ESPEnabled", {
-        Text = "Enable ESP",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.Enabled = Value
-        end
+    -- Notify on load
+    Rayfield:Notify({
+        Title = "Script Loaded",
+        Content = "ESP is ready to use",
+        Duration = 5,
+        Image = 4483362458
     })
-
-    ESPTab:AddToggle("ESPTeamCheck", {
-        Text = "Team Check",
-        Default = true,
-        Callback = function(Value)
-            ESPSettings.TeamCheck = Value
-        end
-    })
-
-    ESPTab:AddToggle("ESPTeamColor", {
-        Text = "Team Color",
-        Default = true,
-        Callback = function(Value)
-            ESPSettings.TeamColor = Value
-        end
-    })
-
-    ESPTab:AddToggle("ESPBox", {
-        Text = "Show Box",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowBox = Value
-        end
-    })
-
-    ESPTab:AddToggle("ESPName", {
-        Text = "Show Name",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowName = Value
-        end
-    })
-
-    ESPTab:AddToggle("ESPHealth", {
-        Text = "Show Health",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowHealth = Value
-        end
-    })
-
-    ESPTab:AddToggle("ESPDistance", {
-        Text = "Show Distance",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowDistance = Value
-        end
-    })
-
-    ESPTab:AddToggle("ESPTracer", {
-        Text = "Show Tracer",
-        Default = false,
-        Callback = function(Value)
-            ESPSettings.ShowTracer = Value
-        end
-    })
-
-    ESPTab:AddSlider("ESPMaxDistance", {
-        Text = "Max Distance",
-        Default = 1000,
-        Min = 100,
-        Max = 5000,
-        Rounding = 0,
-        Callback = function(Value)
-            ESPSettings.MaxDistance = Value
-        end
-    })
-
-    ESPTab:AddSlider("ESPTextSize", {
-        Text = "Text Size",
-        Default = 13,
-        Min = 8,
-        Max = 24,
-        Rounding = 0,
-        Callback = function(Value)
-            ESPSettings.TextSize = Value
-            for _, espObject in pairs(ESPObjects) do
-                if espObject.Name and espObject.Distance then
-                    espObject.Name.Size = Value
-                    espObject.Distance.Size = Value
-                end
-            end
-        end
-    })
-
-    Library:Notify("Script loaded successfully!", 5)
 
     return true
 end
