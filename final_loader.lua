@@ -9,29 +9,257 @@ local function startScript()
     local RunService = game:GetService("RunService")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local UserInputService = game:GetService("UserInputService")
+    local CoreGui = game:GetService("CoreGui")
 
     -- Locals
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
 
-    -- Load UI Library
-    local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+    -- Simple UI Library
+    local Library = {}
+    
+    function Library:CreateWindow(title)
+        local ScreenGui = Instance.new("ScreenGui")
+        local Main = Instance.new("Frame")
+        local Title = Instance.new("TextLabel")
+        local TabHolder = Instance.new("Frame")
+        local TabContainer = Instance.new("Frame")
+        
+        ScreenGui.Name = "PFGui"
+        ScreenGui.Parent = CoreGui
+        ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        
+        Main.Name = "Main"
+        Main.Parent = ScreenGui
+        Main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        Main.BorderSizePixel = 0
+        Main.Position = UDim2.new(0.5, -300, 0.5, -200)
+        Main.Size = UDim2.new(0, 600, 0, 400)
+        
+        Title.Name = "Title"
+        Title.Parent = Main
+        Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Title.BorderSizePixel = 0
+        Title.Size = UDim2.new(1, 0, 0, 30)
+        Title.Font = Enum.Font.SourceSansBold
+        Title.Text = title
+        Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Title.TextSize = 16
+        
+        TabHolder.Name = "TabHolder"
+        TabHolder.Parent = Main
+        TabHolder.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        TabHolder.BorderSizePixel = 0
+        TabHolder.Position = UDim2.new(0, 0, 0, 30)
+        TabHolder.Size = UDim2.new(0, 150, 1, -30)
+        
+        TabContainer.Name = "TabContainer"
+        TabContainer.Parent = Main
+        TabContainer.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        TabContainer.BorderSizePixel = 0
+        TabContainer.Position = UDim2.new(0, 150, 0, 30)
+        TabContainer.Size = UDim2.new(1, -150, 1, -30)
+        
+        -- Make window draggable
+        local dragging
+        local dragInput
+        local dragStart
+        local startPos
 
-    -- Create Window
-    local Window = Rayfield:CreateWindow({
-        Name = "Phantom Forces",
-        LoadingTitle = "Loading Script...",
-        LoadingSubtitle = "by TOS Industries",
-        ConfigurationSaving = {
-            Enabled = false,
-            FolderName = nil,
-            FileName = "PFConfig"
-        }
-    })
+        Title.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = Main.Position
+            end
+        end)
 
-    -- Create Tabs
-    local VisualsTab = Window:CreateTab("Visuals", 4483362458)
-    local SettingsTab = Window:CreateTab("Settings", 4483362458)
+        Title.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                dragInput = input
+            end
+        end)
+
+        RunService.RenderStepped:Connect(function()
+            if dragging and dragInput then
+                local delta = dragInput.Position - dragStart
+                Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+        
+        local window = {}
+        local tabs = {}
+        
+        function window:AddTab(name)
+            local TabButton = Instance.new("TextButton")
+            local TabPage = Instance.new("ScrollingFrame")
+            
+            TabButton.Name = name
+            TabButton.Parent = TabHolder
+            TabButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+            TabButton.BorderSizePixel = 0
+            TabButton.Size = UDim2.new(1, 0, 0, 30)
+            TabButton.Font = Enum.Font.SourceSans
+            TabButton.Text = name
+            TabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TabButton.TextSize = 14
+            TabButton.AutoButtonColor = false
+            
+            TabPage.Name = name
+            TabPage.Parent = TabContainer
+            TabPage.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+            TabPage.BorderSizePixel = 0
+            TabPage.Size = UDim2.new(1, 0, 1, 0)
+            TabPage.ScrollBarThickness = 4
+            TabPage.Visible = false
+            
+            local tab = {}
+            
+            function tab:AddToggle(name, default, callback)
+                local Toggle = Instance.new("Frame")
+                local Button = Instance.new("TextButton")
+                local Title = Instance.new("TextLabel")
+                
+                Toggle.Name = name
+                Toggle.Parent = TabPage
+                Toggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                Toggle.BorderSizePixel = 0
+                Toggle.Size = UDim2.new(1, -20, 0, 30)
+                Toggle.Position = UDim2.new(0, 10, 0, #TabPage:GetChildren() * 35)
+                
+                Button.Name = "Button"
+                Button.Parent = Toggle
+                Button.BackgroundColor3 = default and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                Button.BorderSizePixel = 0
+                Button.Position = UDim2.new(1, -40, 0.5, -10)
+                Button.Size = UDim2.new(0, 20, 0, 20)
+                Button.Font = Enum.Font.SourceSans
+                Button.Text = ""
+                Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+                Button.TextSize = 14
+                
+                Title.Name = "Title"
+                Title.Parent = Toggle
+                Title.BackgroundTransparency = 1
+                Title.Position = UDim2.new(0, 10, 0, 0)
+                Title.Size = UDim2.new(1, -60, 1, 0)
+                Title.Font = Enum.Font.SourceSans
+                Title.Text = name
+                Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+                Title.TextSize = 14
+                Title.TextXAlignment = Enum.TextXAlignment.Left
+                
+                local enabled = default
+                Button.MouseButton1Click:Connect(function()
+                    enabled = not enabled
+                    Button.BackgroundColor3 = enabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    callback(enabled)
+                end)
+            end
+            
+            function tab:AddSlider(name, min, max, default, callback)
+                local Slider = Instance.new("Frame")
+                local Title = Instance.new("TextLabel")
+                local SliderBar = Instance.new("Frame")
+                local Fill = Instance.new("Frame")
+                local Value = Instance.new("TextLabel")
+                
+                Slider.Name = name
+                Slider.Parent = TabPage
+                Slider.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                Slider.BorderSizePixel = 0
+                Slider.Size = UDim2.new(1, -20, 0, 45)
+                Slider.Position = UDim2.new(0, 10, 0, #TabPage:GetChildren() * 50)
+                
+                Title.Name = "Title"
+                Title.Parent = Slider
+                Title.BackgroundTransparency = 1
+                Title.Position = UDim2.new(0, 10, 0, 0)
+                Title.Size = UDim2.new(1, -20, 0, 20)
+                Title.Font = Enum.Font.SourceSans
+                Title.Text = name
+                Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+                Title.TextSize = 14
+                Title.TextXAlignment = Enum.TextXAlignment.Left
+                
+                SliderBar.Name = "SliderBar"
+                SliderBar.Parent = Slider
+                SliderBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                SliderBar.BorderSizePixel = 0
+                SliderBar.Position = UDim2.new(0, 10, 0, 25)
+                SliderBar.Size = UDim2.new(1, -60, 0, 10)
+                
+                Fill.Name = "Fill"
+                Fill.Parent = SliderBar
+                Fill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+                Fill.BorderSizePixel = 0
+                Fill.Size = UDim2.new((default - min)/(max - min), 0, 1, 0)
+                
+                Value.Name = "Value"
+                Value.Parent = Slider
+                Value.BackgroundTransparency = 1
+                Value.Position = UDim2.new(1, -45, 0, 20)
+                Value.Size = UDim2.new(0, 35, 0, 20)
+                Value.Font = Enum.Font.SourceSans
+                Value.Text = tostring(default)
+                Value.TextColor3 = Color3.fromRGB(255, 255, 255)
+                Value.TextSize = 14
+                
+                local dragging = false
+                
+                SliderBar.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = true
+                    end
+                end)
+                
+                UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = false
+                    end
+                end)
+                
+                UserInputService.InputChanged:Connect(function(input)
+                    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                        local pos = UDim2.new(math.clamp((input.Position.X - SliderBar.AbsolutePosition.X) / SliderBar.AbsoluteSize.X, 0, 1), 0, 1, 0)
+                        Fill.Size = pos
+                        local value = math.floor(min + ((max - min) * pos.X.Scale))
+                        Value.Text = tostring(value)
+                        callback(value)
+                    end
+                end)
+            end
+            
+            table.insert(tabs, {button = TabButton, page = TabPage})
+            
+            TabButton.MouseButton1Click:Connect(function()
+                for _, t in pairs(tabs) do
+                    t.page.Visible = (t.button == TabButton)
+                    t.button.BackgroundColor3 = (t.button == TabButton) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(35, 35, 35)
+                end
+            end)
+            
+            if #tabs == 1 then
+                TabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                TabPage.Visible = true
+            end
+            
+            return tab
+        end
+        
+        return window
+    end
+    
+    -- Create UI
+    local Window = Library:CreateWindow("Phantom Forces")
+    local VisualsTab = Window:AddTab("Visuals")
+    local SettingsTab = Window:AddTab("Settings")
 
     -- ESP Settings
     local ESPSettings = {
@@ -53,109 +281,53 @@ local function startScript()
     -- Create ESP Section
     local ESPSection = VisualsTab:CreateSection("ESP Settings")
 
-    -- ESP Toggles
-    VisualsTab:CreateToggle({
-        Name = "Enable ESP",
-        CurrentValue = false,
-        Flag = "ESPEnabled",
-        Callback = function(Value)
-            ESPSettings.Enabled = Value
-        end
-    })
+    -- Add ESP Toggles
+    VisualsTab:AddToggle("Enable ESP", false, function(Value)
+        ESPSettings.Enabled = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Team Check",
-        CurrentValue = true,
-        Flag = "TeamCheck",
-        Callback = function(Value)
-            ESPSettings.TeamCheck = Value
-        end
-    })
+    VisualsTab:AddToggle("Team Check", true, function(Value)
+        ESPSettings.TeamCheck = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Team Color",
-        CurrentValue = true,
-        Flag = "TeamColor",
-        Callback = function(Value)
-            ESPSettings.TeamColor = Value
-        end
-    })
+    VisualsTab:AddToggle("Team Color", true, function(Value)
+        ESPSettings.TeamColor = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Show Box",
-        CurrentValue = false,
-        Flag = "ShowBox",
-        Callback = function(Value)
-            ESPSettings.ShowBox = Value
-        end
-    })
+    VisualsTab:AddToggle("Show Box", false, function(Value)
+        ESPSettings.ShowBox = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Show Name",
-        CurrentValue = false,
-        Flag = "ShowName",
-        Callback = function(Value)
-            ESPSettings.ShowName = Value
-        end
-    })
+    VisualsTab:AddToggle("Show Name", false, function(Value)
+        ESPSettings.ShowName = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Show Health",
-        CurrentValue = false,
-        Flag = "ShowHealth",
-        Callback = function(Value)
-            ESPSettings.ShowHealth = Value
-        end
-    })
+    VisualsTab:AddToggle("Show Health", false, function(Value)
+        ESPSettings.ShowHealth = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Show Distance",
-        CurrentValue = false,
-        Flag = "ShowDistance",
-        Callback = function(Value)
-            ESPSettings.ShowDistance = Value
-        end
-    })
+    VisualsTab:AddToggle("Show Distance", false, function(Value)
+        ESPSettings.ShowDistance = Value
+    end)
 
-    VisualsTab:CreateToggle({
-        Name = "Show Tracer",
-        CurrentValue = false,
-        Flag = "ShowTracer",
-        Callback = function(Value)
-            ESPSettings.ShowTracer = Value
-        end
-    })
+    VisualsTab:AddToggle("Show Tracer", false, function(Value)
+        ESPSettings.ShowTracer = Value
+    end)
 
-    -- ESP Sliders
-    VisualsTab:CreateSlider({
-        Name = "Max Distance",
-        Range = {100, 5000},
-        Increment = 100,
-        Suffix = "studs",
-        CurrentValue = 1000,
-        Flag = "MaxDistance",
-        Callback = function(Value)
-            ESPSettings.MaxDistance = Value
-        end
-    })
+    -- Add ESP Sliders
+    VisualsTab:AddSlider("Max Distance", 100, 5000, 1000, function(Value)
+        ESPSettings.MaxDistance = Value
+    end)
 
-    VisualsTab:CreateSlider({
-        Name = "Text Size",
-        Range = {8, 24},
-        Increment = 1,
-        Suffix = "px",
-        CurrentValue = 13,
-        Flag = "TextSize",
-        Callback = function(Value)
-            ESPSettings.TextSize = Value
-            for _, espObject in pairs(ESPObjects) do
-                if espObject.Name and espObject.Distance then
-                    espObject.Name.Size = Value
-                    espObject.Distance.Size = Value
-                end
+    VisualsTab:AddSlider("Text Size", 8, 24, 13, function(Value)
+        ESPSettings.TextSize = Value
+        for _, espObject in pairs(ESPObjects) do
+            if espObject.Name and espObject.Distance then
+                espObject.Name.Size = Value
+                espObject.Distance.Size = Value
             end
         end
-    })
+    end)
 
     -- ESP Objects
     local ESPObjects = {}
