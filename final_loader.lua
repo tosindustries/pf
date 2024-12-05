@@ -56,8 +56,185 @@ local function startScript()
             screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
         end
         
-        -- Rest of your UI code...
-        -- (Keep all the existing UI creation code here)
+        local mainFrame = Instance.new("Frame")
+        mainFrame.Name = "MainFrame"
+        mainFrame.Size = UDim2.new(0, 300, 0, 400)
+        mainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+        mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        mainFrame.BorderSizePixel = 0
+        mainFrame.Parent = screenGui
+        
+        local mainCorner = Instance.new("UICorner")
+        mainCorner.CornerRadius = UDim.new(0, 8)
+        mainCorner.Parent = mainFrame
+        
+        local shadow = Instance.new("ImageLabel")
+        shadow.Name = "Shadow"
+        shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+        shadow.BackgroundTransparency = 1
+        shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+        shadow.Size = UDim2.new(1, 47, 1, 47)
+        shadow.ZIndex = 0
+        shadow.Image = "rbxassetid://6015897843"
+        shadow.ImageColor3 = Color3.new(0, 0, 0)
+        shadow.ImageTransparency = 0.5
+        shadow.Parent = mainFrame
+        
+        local topBar = Instance.new("Frame")
+        topBar.Name = "TopBar"
+        topBar.Size = UDim2.new(1, 0, 0, 35)
+        topBar.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        topBar.BorderSizePixel = 0
+        topBar.Parent = mainFrame
+        
+        local topCorner = Instance.new("UICorner")
+        topCorner.CornerRadius = UDim.new(0, 8)
+        topCorner.Parent = topBar
+        
+        local title = Instance.new("TextLabel")
+        title.Name = "Title"
+        title.Size = UDim2.new(1, -40, 1, 0)
+        title.Position = UDim2.new(0, 10, 0, 0)
+        title.BackgroundTransparency = 1
+        title.Text = "TOS Industries v1"
+        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.TextSize = 16
+        title.Font = Enum.Font.GothamBold
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Parent = topBar
+        
+        local closeButton = Instance.new("TextButton")
+        closeButton.Name = "CloseButton"
+        closeButton.Size = UDim2.new(0, 30, 0, 30)
+        closeButton.Position = UDim2.new(1, -35, 0, 2)
+        closeButton.BackgroundColor3 = Color3.fromRGB(255, 95, 95)
+        closeButton.Text = "×"
+        closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeButton.TextSize = 20
+        closeButton.Font = Enum.Font.GothamBold
+        closeButton.Parent = topBar
+        
+        local closeCorner = Instance.new("UICorner")
+        closeCorner.CornerRadius = UDim.new(0, 6)
+        closeCorner.Parent = closeButton
+        
+        closeButton.MouseButton1Click:Connect(function()
+            mainFrame.Visible = false
+        end)
+        
+        local menuButtons = Instance.new("Frame")
+        menuButtons.Name = "MenuButtons"
+        menuButtons.Size = UDim2.new(1, -20, 0, 40)
+        menuButtons.Position = UDim2.new(0, 10, 0, 45)
+        menuButtons.BackgroundTransparency = 1
+        menuButtons.Parent = mainFrame
+        
+        local menuLayout = Instance.new("UIListLayout")
+        menuLayout.FillDirection = Enum.FillDirection.Horizontal
+        menuLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        menuLayout.Padding = UDim.new(0, 10)
+        menuLayout.Parent = menuButtons
+        
+        local contentContainer = Instance.new("Frame")
+        contentContainer.Name = "ContentContainer"
+        contentContainer.Size = UDim2.new(1, -20, 1, -95)
+        contentContainer.Position = UDim2.new(0, 10, 0, 90)
+        contentContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        contentContainer.BorderSizePixel = 0
+        contentContainer.Parent = mainFrame
+        
+        local containerCorner = Instance.new("UICorner")
+        containerCorner.CornerRadius = UDim.new(0, 8)
+        containerCorner.Parent = contentContainer
+        
+        -- Create pages
+        local pages = {
+            Aimbot = Instance.new("ScrollingFrame"),
+            Visuals = Instance.new("ScrollingFrame"),
+            Settings = Instance.new("ScrollingFrame")
+        }
+        
+        for name, frame in pairs(pages) do
+            frame.Name = name .. "Page"
+            frame.Size = UDim2.new(1, -20, 1, -20)
+            frame.Position = UDim2.new(0, 10, 0, 10)
+            frame.BackgroundTransparency = 1
+            frame.BorderSizePixel = 0
+            frame.ScrollBarThickness = 2
+            frame.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+            frame.Visible = false
+            frame.Parent = contentContainer
+            
+            local layout = Instance.new("UIListLayout")
+            layout.Padding = UDim.new(0, 10)
+            layout.Parent = frame
+        end
+        
+        local buttons = {
+            Aimbot = UI.createMenuButton("Aimbot", 1, menuButtons),
+            Visuals = UI.createMenuButton("Visuals", 2, menuButtons),
+            Settings = UI.createMenuButton("Settings", 3, menuButtons)
+        }
+        
+        local currentPage = "Aimbot"
+        pages[currentPage].Visible = true
+        buttons[currentPage].BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+        buttons[currentPage].TextColor3 = Color3.fromRGB(255, 255, 255)
+        
+        for name, button in pairs(buttons) do
+            button.MouseButton1Click:Connect(function()
+                if currentPage == name then return end
+                
+                -- Hide current page
+                pages[currentPage].Visible = false
+                buttons[currentPage].BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+                buttons[currentPage].TextColor3 = Color3.fromRGB(200, 200, 200)
+                
+                -- Show new page
+                currentPage = name
+                pages[currentPage].Visible = true
+                button.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+                button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end)
+        end
+        
+        -- Make window draggable
+        local dragging = false
+        local dragStart = nil
+        local startPos = nil
+        
+        topBar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = mainFrame.Position
+            end
+        end)
+        
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = input.Position - dragStart
+                mainFrame.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+        
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        return {
+            ScreenGui = screenGui,
+            MainFrame = mainFrame,
+            Pages = pages
+        }
     end
 
     -- ESP Settings
