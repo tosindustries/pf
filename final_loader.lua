@@ -426,202 +426,209 @@ local function startScript()
         Names = true,
         Health = true,
         Distance = true,
-        Tracers = true,
         TeamCheck = true,
-        Players = {},
-        Connections = {}
+        Objects = {}
     }
     
-    function ESP:CreateDrawings(player)
-        if self.Players[player] then return end
+    -- Create ESP Container
+    local espContainer = Instance.new("Folder")
+    espContainer.Name = "ESPContainer"
+    espContainer.Parent = game.CoreGui
+    
+    function ESP:CreateObject(player)
+        if self.Objects[player] then return end
         
-        local drawings = {
-            Box = Drawing.new("Square"),
-            BoxOutline = Drawing.new("Square"),
-            Name = Drawing.new("Text"),
-            Distance = Drawing.new("Text"),
-            HealthBar = Drawing.new("Square"),
-            HealthBarOutline = Drawing.new("Square"),
-            Tracer = Drawing.new("Line")
+        -- Create BillboardGui for ESP
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = player.Name .. "_ESP"
+        billboard.AlwaysOnTop = true
+        billboard.Size = UDim2.new(4, 0, 5, 0)
+        billboard.StudsOffset = Vector3.new(0, 0, 0)
+        billboard.MaxDistance = 1000
+        billboard.Parent = espContainer
+        
+        -- Create Box
+        local box = Instance.new("Frame")
+        box.Name = "Box"
+        box.Size = UDim2.new(1, 0, 1, 0)
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 2
+        box.BorderColor3 = Color3.fromRGB(255, 255, 255)
+        box.Parent = billboard
+        
+        -- Create Name Label
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Size = UDim2.new(1, 0, 0, 20)
+        nameLabel.Position = UDim2.new(0, 0, 0, -25)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.TextStrokeTransparency = 0
+        nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        nameLabel.Font = Enum.Font.SourceSansBold
+        nameLabel.TextSize = 14
+        nameLabel.Text = player.Name
+        nameLabel.Parent = billboard
+        
+        -- Create Health Bar
+        local healthBarOutline = Instance.new("Frame")
+        healthBarOutline.Name = "HealthBarOutline"
+        healthBarOutline.Size = UDim2.new(0, 5, 1, 0)
+        healthBarOutline.Position = UDim2.new(0, -10, 0, 0)
+        healthBarOutline.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        healthBarOutline.BorderSizePixel = 0
+        healthBarOutline.Parent = billboard
+        
+        local healthBar = Instance.new("Frame")
+        healthBar.Name = "HealthBar"
+        healthBar.Size = UDim2.new(1, 0, 1, 0)
+        healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        healthBar.BorderSizePixel = 0
+        healthBar.Parent = healthBarOutline
+        
+        -- Create Distance Label
+        local distanceLabel = Instance.new("TextLabel")
+        distanceLabel.Name = "DistanceLabel"
+        distanceLabel.Size = UDim2.new(1, 0, 0, 20)
+        distanceLabel.Position = UDim2.new(0, 0, 1, 5)
+        distanceLabel.BackgroundTransparency = 1
+        distanceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        distanceLabel.TextStrokeTransparency = 0
+        distanceLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        distanceLabel.Font = Enum.Font.SourceSansBold
+        distanceLabel.TextSize = 14
+        distanceLabel.Parent = billboard
+        
+        self.Objects[player] = {
+            Billboard = billboard,
+            Box = box,
+            NameLabel = nameLabel,
+            HealthBar = healthBar,
+            HealthBarOutline = healthBarOutline,
+            DistanceLabel = distanceLabel
         }
-        
-        -- Box settings
-        drawings.BoxOutline.Thickness = 3
-        drawings.BoxOutline.Filled = false
-        drawings.BoxOutline.Color = Color3.fromRGB(0, 0, 0)
-        drawings.BoxOutline.Transparency = 1
-        drawings.BoxOutline.Visible = false
-        
-        drawings.Box.Thickness = 1
-        drawings.Box.Filled = false
-        drawings.Box.Color = Color3.fromRGB(255, 255, 255)
-        drawings.Box.Transparency = 1
-        drawings.Box.Visible = false
-        
-        -- Name settings
-        drawings.Name.Size = 13
-        drawings.Name.Center = true
-        drawings.Name.Outline = true
-        drawings.Name.Color = Color3.fromRGB(255, 255, 255)
-        drawings.Name.Transparency = 1
-        drawings.Name.Visible = false
-        
-        -- Distance settings
-        drawings.Distance.Size = 13
-        drawings.Distance.Center = true
-        drawings.Distance.Outline = true
-        drawings.Distance.Color = Color3.fromRGB(255, 255, 255)
-        drawings.Distance.Transparency = 1
-        drawings.Distance.Visible = false
-        
-        -- Health bar settings
-        drawings.HealthBarOutline.Thickness = 1
-        drawings.HealthBarOutline.Filled = true
-        drawings.HealthBarOutline.Color = Color3.fromRGB(0, 0, 0)
-        drawings.HealthBarOutline.Transparency = 1
-        drawings.HealthBarOutline.Visible = false
-        
-        drawings.HealthBar.Thickness = 1
-        drawings.HealthBar.Filled = true
-        drawings.HealthBar.Color = Color3.fromRGB(0, 255, 0)
-        drawings.HealthBar.Transparency = 1
-        drawings.HealthBar.Visible = false
-        
-        -- Tracer settings
-        drawings.Tracer.Thickness = 1
-        drawings.Tracer.Color = Color3.fromRGB(255, 255, 255)
-        drawings.Tracer.Transparency = 1
-        drawings.Tracer.Visible = false
-        
-        self.Players[player] = drawings
     end
     
-    function ESP:RemoveDrawings(player)
-        local drawings = self.Players[player]
-        if not drawings then return end
+    function ESP:RemoveObject(player)
+        local objects = self.Objects[player]
+        if not objects then return end
         
-        for _, drawing in pairs(drawings) do
-            if drawing and drawing.Remove then
-                drawing:Remove()
-            end
-        end
-        
-        self.Players[player] = nil
-    end
-    
-    function ESP:ToggleDrawings(drawings, visible)
-        if not drawings then return end
-        
-        for _, drawing in pairs(drawings) do
-            if drawing and drawing.Visible ~= nil then
-                drawing.Visible = visible
-            end
-        end
-    end
-    
-    function ESP:UpdateDrawings(player)
-        if not self.Enabled then return end
-        if player == LocalPlayer then return end
-        
-        local drawings = self.Players[player]
-        if not drawings then
-            self:CreateDrawings(player)
-            drawings = self.Players[player]
-        end
-        
-        local character = player.Character
-        local humanoid = character and character:FindFirstChild("Humanoid")
-        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-        
-        if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        if self.TeamCheck and player.Team == LocalPlayer.Team then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
-        if not onScreen then
-            self:ToggleDrawings(drawings, false)
-            return
-        end
-        
-        local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
-        local size = math.clamp(1 / (distance * 0.2), 0.1, 1)
-        local boxSize = Vector2.new(1000 * size, 1500 * size)
-        local boxPos = Vector2.new(pos.X - boxSize.X / 2, pos.Y - boxSize.Y / 2)
-        
-        -- Update box
-        if self.Boxes then
-            drawings.BoxOutline.Size = boxSize
-            drawings.BoxOutline.Position = boxPos
-            drawings.BoxOutline.Visible = true
-            
-            drawings.Box.Size = boxSize
-            drawings.Box.Position = boxPos
-            drawings.Box.Visible = true
-        else
-            drawings.BoxOutline.Visible = false
-            drawings.Box.Visible = false
-        end
-        
-        -- Update health bar
-        if self.Health then
-            local healthPercent = humanoid.Health / humanoid.MaxHealth
-            local barHeight = boxSize.Y
-            local barPos = Vector2.new(boxPos.X - 7, boxPos.Y)
-            
-            drawings.HealthBarOutline.Size = Vector2.new(4, barHeight)
-            drawings.HealthBarOutline.Position = barPos
-            drawings.HealthBarOutline.Visible = true
-            
-            drawings.HealthBar.Size = Vector2.new(2, barHeight * healthPercent)
-            drawings.HealthBar.Position = Vector2.new(barPos.X + 1, barPos.Y + barHeight * (1 - healthPercent))
-            drawings.HealthBar.Color = Color3.fromRGB(255 - 255 * healthPercent, 255 * healthPercent, 0)
-            drawings.HealthBar.Visible = true
-        else
-            drawings.HealthBarOutline.Visible = false
-            drawings.HealthBar.Visible = false
-        end
-        
-        -- Update name
-        if self.Names then
-            drawings.Name.Text = player.Name
-            drawings.Name.Position = Vector2.new(pos.X, boxPos.Y - 15)
-            drawings.Name.Visible = true
-        else
-            drawings.Name.Visible = false
-        end
-        
-        -- Update distance
-        if self.Distance then
-            drawings.Distance.Text = string.format("[%d]", math.floor(distance))
-            drawings.Distance.Position = Vector2.new(pos.X, boxPos.Y + boxSize.Y + 5)
-            drawings.Distance.Visible = true
-        else
-            drawings.Distance.Visible = false
-        end
-        
-        -- Update tracer
-        if self.Tracers then
-            drawings.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-            drawings.Tracer.To = Vector2.new(pos.X, pos.Y)
-            drawings.Tracer.Visible = true
-        else
-            drawings.Tracer.Visible = false
-        end
+        objects.Billboard:Destroy()
+        self.Objects[player] = nil
     end
     
     function ESP:Update()
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                self:UpdateDrawings(player)
+        for player, objects in pairs(self.Objects) do
+            if not self.Enabled or not player or not player.Parent or player == LocalPlayer then
+                objects.Billboard.Enabled = false
+                continue
+            end
+            
+            local character = player.Character
+            local humanoid = character and character:FindFirstChild("Humanoid")
+            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+            
+            if not character or not humanoid or not rootPart or humanoid.Health <= 0 then
+                objects.Billboard.Enabled = false
+                continue
+            end
+            
+            if self.TeamCheck and player.Team == LocalPlayer.Team then
+                objects.Billboard.Enabled = false
+                continue
+            end
+            
+            -- Update billboard
+            objects.Billboard.Enabled = true
+            objects.Billboard.Adornee = rootPart
+            
+            -- Update box
+            objects.Box.Visible = self.Boxes
+            
+            -- Update name
+            objects.NameLabel.Visible = self.Names
+            
+            -- Update health bar
+            if self.Health then
+                local healthPercent = humanoid.Health / humanoid.MaxHealth
+                objects.HealthBarOutline.Visible = true
+                objects.HealthBar.Visible = true
+                objects.HealthBar.Size = UDim2.new(1, 0, healthPercent, 0)
+                objects.HealthBar.Position = UDim2.new(0, 0, 1 - healthPercent, 0)
+                objects.HealthBar.BackgroundColor3 = Color3.fromRGB(
+                    255 * (1 - healthPercent),
+                    255 * healthPercent,
+                    0
+                )
+            else
+                objects.HealthBarOutline.Visible = false
+                objects.HealthBar.Visible = false
+            end
+            
+            -- Update distance
+            if self.Distance then
+                local distance = math.floor((rootPart.Position - Camera.CFrame.Position).Magnitude)
+                objects.DistanceLabel.Visible = true
+                objects.DistanceLabel.Text = string.format("[%d]", distance)
+            else
+                objects.DistanceLabel.Visible = false
             end
         end
     end
+    
+    -- Initialize ESP
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            ESP:CreateObject(player)
+        end
+    end
+    
+    -- Connect player events
+    Players.PlayerAdded:Connect(function(player)
+        ESP:CreateObject(player)
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        ESP:RemoveObject(player)
+    end)
+    
+    -- Update ESP
+    RunService.RenderStepped:Connect(function()
+        ESP:Update()
+    end)
+    
+    -- Create ESP UI elements
+    local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
+        ESP.Enabled = state
+    end)
+    
+    local boxesToggle = UI.createToggle("Show Boxes", ui.Pages.Visuals, function(state)
+        ESP.Boxes = state
+    end)
+    
+    local namesToggle = UI.createToggle("Show Names", ui.Pages.Visuals, function(state)
+        ESP.Names = state
+    end)
+    
+    local healthToggle = UI.createToggle("Show Health", ui.Pages.Visuals, function(state)
+        ESP.Health = state
+    end)
+    
+    local distanceToggle = UI.createToggle("Show Distance", ui.Pages.Visuals, function(state)
+        ESP.Distance = state
+    end)
+    
+    local espTeamCheckToggle = UI.createToggle("Team Check", ui.Pages.Visuals, function(state)
+        ESP.TeamCheck = state
+    end)
+    
+    -- Set initial states
+    espToggle.SetState(false)
+    boxesToggle.SetState(true)
+    namesToggle.SetState(true)
+    healthToggle.SetState(true)
+    distanceToggle.SetState(true)
+    espTeamCheckToggle.SetState(true)
     
     -- Initialize Aimbot
     local Aimbot = {
@@ -691,40 +698,6 @@ local function startScript()
         Aimbot.PredictMovement = state
     end)
     
-    -- Visuals Tab
-    local espToggle = UI.createToggle("Enable ESP", ui.Pages.Visuals, function(state)
-        ESP.Enabled = state
-        if not state then
-            for _, drawings in pairs(ESP.Players) do
-                ESP:ToggleDrawings(drawings, false)
-            end
-        end
-    end)
-    
-    local boxesToggle = UI.createToggle("Show Boxes", ui.Pages.Visuals, function(state)
-        ESP.Boxes = state
-    end)
-    
-    local namesToggle = UI.createToggle("Show Names", ui.Pages.Visuals, function(state)
-        ESP.Names = state
-    end)
-    
-    local healthToggle = UI.createToggle("Show Health", ui.Pages.Visuals, function(state)
-        ESP.Health = state
-    end)
-    
-    local distanceToggle = UI.createToggle("Show Distance", ui.Pages.Visuals, function(state)
-        ESP.Distance = state
-    end)
-    
-    local tracersToggle = UI.createToggle("Show Tracers", ui.Pages.Visuals, function(state)
-        ESP.Tracers = state
-    end)
-    
-    local teamCheckToggle = UI.createToggle("Team Check", ui.Pages.Visuals, function(state)
-        ESP.TeamCheck = state
-    end)
-    
     -- Set initial states
     aimbotToggle.SetState(false)
     silentAimToggle.SetState(false)
@@ -736,105 +709,9 @@ local function startScript()
     teamCheckToggle.SetState(true)
     visibilityCheckToggle.SetState(false)
     predictionToggle.SetState(true)
-    espToggle.SetState(false)
-    boxesToggle.SetState(true)
-    namesToggle.SetState(true)
-    healthToggle.SetState(true)
-    distanceToggle.SetState(true)
-    tracersToggle.SetState(true)
     
     -- Make sure UI is visible initially
     ui.MainFrame.Visible = true
-    
-    -- Initialize ESP
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            ESP:CreateDrawings(player)
-        end
-    end
-    
-    -- Connect events
-    ESP.Connections.PlayerAdded = Players.PlayerAdded:Connect(function(player)
-        ESP:CreateDrawings(player)
-    end)
-    
-    ESP.Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
-        ESP:RemoveDrawings(player)
-    end)
-    
-    -- Update loop
-    RunService:BindToRenderStep("AimbotESP", Enum.RenderPriority.Camera.Value + 1, function()
-        -- Update FOV circle position
-        if fovCircle.Visible then
-            fovCircle.Position = UserInputService:GetMouseLocation()
-        end
-        
-        -- Update Aimbot
-        if Aimbot.Enabled and (Aimbot.Active or Aimbot.Silent) then
-            local target = GetClosestPlayerToCursor()
-            if target then
-                local character = target.Character
-                if character then
-                    local part = character:FindFirstChild(Aimbot.TargetPart)
-                    if part then
-                        local partPos = part.Position
-                        if Aimbot.PredictMovement then
-                            partPos = partPos + (part.Velocity * Aimbot.PredictionAmount)
-                        end
-                        
-                        local screenPos, onScreen = Camera:WorldToViewportPoint(partPos)
-                        if onScreen then
-                            if Aimbot.Silent then
-                                -- Silent aim logic here
-                                -- This requires game-specific implementation
-                            else
-                                local mousePos = UserInputService:GetMouseLocation()
-                                local targetPos = Vector2.new(screenPos.X, screenPos.Y)
-                                local delta = (targetPos - mousePos)
-                                
-                                -- Apply smoothing
-                                delta = delta / Aimbot.Smoothness
-                                
-                                -- Move mouse
-                                mousemoverel(delta.X, delta.Y)
-                            end
-                            
-                            -- Auto shoot
-                            if Aimbot.AutoShoot and math.random(1, 100) <= Aimbot.HitChance then
-                                mouse1press()
-                                task.wait()
-                                mouse1release()
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        -- Update ESP
-        ESP:Update()
-    end)
-    
-    -- Input Connections
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        if input.UserInputType == Enum.UserInputType.MouseButton2 then
-            if Aimbot.Enabled then
-                Aimbot.Active = true
-            end
-        elseif input.KeyCode == Enum.KeyCode.RightShift then
-            ui.MainFrame.Visible = not ui.MainFrame.Visible
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        
-        if input.UserInputType == Enum.UserInputType.MouseButton2 then
-            Aimbot.Active = false
-        end
-    end)
     
     -- Main Loop
     RunService:BindToRenderStep("ESP_Aimbot", Enum.RenderPriority.Camera.Value + 1, function()
