@@ -11,246 +11,38 @@ local function startScript()
     local Camera = workspace.CurrentCamera
     
     local LocalPlayer = Players.LocalPlayer
+    local Mouse = LocalPlayer:GetMouse()
     
-    -- ESP System
-    local ESP = {
-        Enabled = false,
-        TeamCheck = true,
-        ShowBox = true,
-        ShowHealth = true,
-        ShowName = true,
-        ShowDistance = true,
-        ShowTracer = true,
-        MaxDistance = 1000,
-        BoxThickness = 2,
-        TracerThickness = 1,
-        TracerOrigin = "Bottom",
-        TextSize = 13,
-        Objects = {},
-        Connections = {}
-    }
-    
-    function ESP:CreateObject(player)
-        if not player or not player.Parent then return end
-        if self.Objects[player] then return end
-        
-        -- Box
-        local box = Drawing.new("Square")
-        box.Visible = false
-        box.Thickness = self.BoxThickness
-        box.Filled = false
-        box.Transparency = 1
-        
-        -- Box outline
-        local boxOutline = Drawing.new("Square")
-        boxOutline.Visible = false
-        boxOutline.Color = Color3.new(0, 0, 0)
-        boxOutline.Thickness = self.BoxThickness + 2
-        boxOutline.Filled = false
-        boxOutline.Transparency = 1
-        
-        -- Health bar background
-        local healthBG = Drawing.new("Square")
-        healthBG.Visible = false
-        healthBG.Color = Color3.new(1, 0, 0)
-        healthBG.Filled = true
-        healthBG.Thickness = 1
-        healthBG.Transparency = 1
-        
-        -- Health bar
-        local healthBar = Drawing.new("Square")
-        healthBar.Visible = false
-        healthBar.Color = Color3.new(0, 1, 0)
-        healthBar.Filled = true
-        healthBar.Thickness = 1
-        healthBar.Transparency = 1
-        
-        -- Name
-        local name = Drawing.new("Text")
-        name.Visible = false
-        name.Center = true
-        name.Outline = true
-        name.Size = self.TextSize
-        name.Font = 2
-        name.Color = Color3.new(1, 1, 1)
-        
-        -- Distance
-        local distance = Drawing.new("Text")
-        distance.Visible = false
-        distance.Center = true
-        distance.Outline = true
-        distance.Size = self.TextSize
-        distance.Font = 2
-        distance.Color = Color3.new(1, 1, 1)
-        
-        -- Tracer
-        local tracer = Drawing.new("Line")
-        tracer.Visible = false
-        tracer.Thickness = self.TracerThickness
-        tracer.Transparency = 1
-        
-        -- Tracer outline
-        local tracerOutline = Drawing.new("Line")
-        tracerOutline.Visible = false
-        tracerOutline.Color = Color3.new(0, 0, 0)
-        tracerOutline.Thickness = self.TracerThickness + 2
-        tracerOutline.Transparency = 1
-        
-        self.Objects[player] = {
-            Box = box,
-            BoxOutline = boxOutline,
-            HealthBG = healthBG,
-            HealthBar = healthBar,
-            Name = name,
-            Distance = distance,
-            Tracer = tracer,
-            TracerOutline = tracerOutline
-        }
-        
-        self.Connections[player] = RunService.RenderStepped:Connect(function()
-            if not self.Enabled then
-                for _, drawing in pairs(self.Objects[player]) do
-                    drawing.Visible = false
-                end
-                return
-            end
-            
-            local character = player.Character
-            if not character then return end
-            
-            local humanoid = character:FindFirstChild("Humanoid")
-            local rootPart = character:FindFirstChild("HumanoidRootPart")
-            if not humanoid or not rootPart or humanoid.Health <= 0 then return end
-            
-            if self.TeamCheck and player.Team == LocalPlayer.Team then return end
-            
-            local distance = (rootPart.Position - Camera.CFrame.Position).Magnitude
-            if distance > self.MaxDistance then return end
-            
-            local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
-            if not onScreen then return end
-            
-            -- Calculate box size
-            local size = (Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(rootPart.Position + Vector3.new(0, 2.5, 0)).Y) / 2
-            local boxSize = Vector2.new(size * 1.5, size * 3)
-            local boxPosition = Vector2.new(pos.X - size * 1.5 / 2, pos.Y - size * 1.5)
-            
-            -- Update box
-            if self.ShowBox then
-                boxOutline.Size = boxSize
-                boxOutline.Position = boxPosition
-                boxOutline.Visible = true
-                
-                box.Size = boxSize
-                box.Position = boxPosition
-                box.Color = player.TeamColor.Color
-                box.Visible = true
-            else
-                box.Visible = false
-                boxOutline.Visible = false
-            end
-            
-            -- Update health bar
-            if self.ShowHealth then
-                local health = humanoid.Health / humanoid.MaxHealth
-                local barHeight = boxSize.Y
-                local barWidth = 4
-                
-                healthBG.Size = Vector2.new(barWidth, barHeight)
-                healthBG.Position = Vector2.new(boxPosition.X - barWidth * 2, boxPosition.Y)
-                healthBG.Visible = true
-                
-                healthBar.Size = Vector2.new(barWidth, barHeight * health)
-                healthBar.Position = Vector2.new(boxPosition.X - barWidth * 2, boxPosition.Y + barHeight * (1 - health))
-                healthBar.Color = Color3.new(1 - health, health, 0)
-                healthBar.Visible = true
-            else
-                healthBG.Visible = false
-                healthBar.Visible = false
-            end
-            
-            -- Update name
-            if self.ShowName then
-                name.Position = Vector2.new(pos.X, boxPosition.Y - 15)
-                name.Text = player.Name
-                name.Color = player.TeamColor.Color
-                name.Visible = true
-            else
-                name.Visible = false
-            end
-            
-            -- Update distance
-            if self.ShowDistance then
-                distance.Position = Vector2.new(pos.X, boxPosition.Y + boxSize.Y + 5)
-                distance.Text = string.format("[%dm]", math.floor(distance))
-                distance.Color = player.TeamColor.Color
-                distance.Visible = true
-            else
-                distance.Visible = false
-            end
-            
-            -- Update tracer
-            if self.ShowTracer then
-                local tracerStart
-                if self.TracerOrigin == "Bottom" then
-                    tracerStart = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-                elseif self.TracerOrigin == "Mouse" then
-                    tracerStart = UserInputService:GetMouseLocation()
-                else -- Top
-                    tracerStart = Vector2.new(Camera.ViewportSize.X/2, 0)
-                end
-                
-                tracerOutline.From = tracerStart
-                tracerOutline.To = Vector2.new(pos.X, pos.Y)
-                tracerOutline.Visible = true
-                
-                tracer.From = tracerStart
-                tracer.To = Vector2.new(pos.X, pos.Y)
-                tracer.Color = player.TeamColor.Color
-                tracer.Visible = true
-            else
-                tracer.Visible = false
-                tracerOutline.Visible = false
-            end
-        end)
-    end
-    
-    function ESP:RemoveObject(player)
-        local objects = self.Objects[player]
-        if not objects then return end
-        
-        for _, drawing in pairs(objects) do
-            drawing:Remove()
-        end
-        
-        if self.Connections[player] then
-            self.Connections[player]:Disconnect()
-            self.Connections[player] = nil
-        end
-        
-        self.Objects[player] = nil
-    end
-    
-    function ESP:Toggle(state)
-        self.Enabled = state
-    end
+    -- Load ESP Library
+    local ESP = loadstring(game:HttpGet("https://kiriot22.com/releases/ESP.lua"))()
     
     -- Initialize ESP
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            ESP:CreateObject(player)
-        end
-    end
+    ESP:Toggle(true)
+    ESP.TeamColor = true
+    ESP.Names = false
+    ESP.Boxes = false
+    ESP.Tracers = false
+    ESP.Health = false
+    ESP.Distance = false
+    ESP.Skeleton = false
+    ESP.TeamMates = true
+    ESP.FaceCamera = true
+    ESP.AutoRemove = true
+    ESP.MaxDistance = 1000
+    ESP.TextSize = 13
+    ESP.BoxThickness = 2
     
-    Players.PlayerAdded:Connect(function(player)
-        ESP:CreateObject(player)
-    end)
+    -- Skeleton Points
+    ESP.SkeletonPoints = {
+        Head = "Head",
+        Torso = "HumanoidRootPart",
+        LeftArm = "Left Arm",
+        RightArm = "Right Arm",
+        LeftLeg = "Left Leg",
+        RightLeg = "Right Leg"
+    }
     
-    Players.PlayerRemoving:Connect(function(player)
-        ESP:RemoveObject(player)
-    end)
-    
-    -- Variables
+    -- Variables for aimbot
     local aimbotActive = false
     local aimbotTeamCheck = true
     local aimbotVisibilityCheck = true
@@ -279,11 +71,192 @@ local function startScript()
     local fovCircle = Drawing.new("Circle")
     fovCircle.Visible = showFOV
     fovCircle.Radius = fovSize
-    fovCircle.Color = Color3.new(1, 1, 1)
+    fovCircle.Color = Color3.fromRGB(255, 128, 0)
     fovCircle.Thickness = 1
     fovCircle.Filled = false
     fovCircle.Transparency = 1
     fovCircle.NumSides = 60
+    
+    -- Create UI System with Orange Theme
+    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
+    local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/addons/ThemeManager.lua"))()
+    
+    -- Create Window
+    local Window = Library:CreateWindow({
+        Title = "TOS Industries V1",
+        Center = true,
+        AutoShow = true,
+    })
+    
+    -- Set Orange Theme
+    Library.AccentColor = Color3.fromRGB(255, 128, 0)
+    Library.AccentColorDark = Color3.fromRGB(204, 102, 0)
+    Library.BackgroundColor = Color3.fromRGB(20, 20, 20)
+    Library.OutlineColor = Color3.fromRGB(40, 40, 40)
+    Library.FontColor = Color3.fromRGB(255, 255, 255)
+    
+    -- Create Tabs
+    local Tabs = {
+        Aimbot = Window:AddTab("Aimbot"),
+        Visuals = Window:AddTab("Visuals"),
+        ['UI Settings'] = Window:AddTab("Settings")
+    }
+    
+    -- Create Groups
+    local MainAimbotGroup = Tabs.Aimbot:AddLeftGroupbox("Main Settings")
+    local TargetingGroup = Tabs.Aimbot:AddRightGroupbox("Targeting")
+    local BehaviorGroup = Tabs.Aimbot:AddLeftGroupbox("Behavior")
+    local SmoothingGroup = Tabs.Aimbot:AddRightGroupbox("Smoothing")
+    local PredictionGroup = Tabs.Aimbot:AddLeftGroupbox("Prediction")
+    local FOVGroup = Tabs.Aimbot:AddRightGroupbox("FOV")
+    local AdvancedGroup = Tabs.Aimbot:AddLeftGroupbox("Advanced")
+    
+    local ESPMainGroup = Tabs.Visuals:AddLeftGroupbox("ESP Main")
+    local ESPFeaturesGroup = Tabs.Visuals:AddRightGroupbox("ESP Features")
+    local ESPSettingsGroup = Tabs.Visuals:AddLeftGroupbox("ESP Settings")
+    
+    -- ESP Main Settings
+    ESPMainGroup:AddToggle('ESPEnabled', {
+        Text = 'Enable ESP',
+        Default = false,
+        Callback = function(Value)
+            ESP:Toggle(Value)
+        end
+    })
+    
+    ESPMainGroup:AddToggle('ESPTeamCheck', {
+        Text = 'Team Check',
+        Default = true,
+        Callback = function(Value)
+            ESP.TeamMates = not Value
+        end
+    })
+    
+    ESPMainGroup:AddToggle('ESPTeamColor', {
+        Text = 'Team Color',
+        Default = true,
+        Callback = function(Value)
+            ESP.TeamColor = Value
+        end
+    })
+    
+    -- ESP Features
+    ESPFeaturesGroup:AddToggle('ESPBoxes', {
+        Text = 'Boxes',
+        Default = false,
+        Callback = function(Value)
+            ESP.Boxes = Value
+        end
+    })
+    
+    ESPFeaturesGroup:AddToggle('ESPHealth', {
+        Text = 'Health Bar',
+        Default = false,
+        Callback = function(Value)
+            ESP.Health = Value
+        end
+    })
+    
+    ESPFeaturesGroup:AddToggle('ESPNames', {
+        Text = 'Names',
+        Default = false,
+        Callback = function(Value)
+            ESP.Names = Value
+        end
+    })
+    
+    ESPFeaturesGroup:AddToggle('ESPDistance', {
+        Text = 'Distance',
+        Default = false,
+        Callback = function(Value)
+            ESP.Distance = Value
+        end
+    })
+    
+    ESPFeaturesGroup:AddToggle('ESPTracers', {
+        Text = 'Tracers',
+        Default = false,
+        Callback = function(Value)
+            ESP.Tracers = Value
+        end
+    })
+    
+    ESPFeaturesGroup:AddToggle('ESPSkeleton', {
+        Text = 'Skeleton',
+        Default = false,
+        Callback = function(Value)
+            ESP.Skeleton = Value
+        end
+    })
+    
+    -- ESP Settings
+    ESPSettingsGroup:AddSlider('ESPMaxDistance', {
+        Text = 'Max Distance',
+        Default = 1000,
+        Min = 100,
+        Max = 5000,
+        Rounding = 0,
+        Callback = function(Value)
+            ESP.MaxDistance = Value
+        end
+    })
+    
+    ESPSettingsGroup:AddSlider('ESPTextSize', {
+        Text = 'Text Size',
+        Default = 13,
+        Min = 8,
+        Max = 24,
+        Rounding = 0,
+        Callback = function(Value)
+            ESP.TextSize = Value
+        end
+    })
+    
+    ESPSettingsGroup:AddSlider('ESPBoxThickness', {
+        Text = 'Box Thickness',
+        Default = 2,
+        Min = 1,
+        Max = 5,
+        Rounding = 0,
+        Callback = function(Value)
+            ESP.BoxThickness = Value
+        end
+    })
+    
+    -- Setup ESP for teams
+    local function setupESP()
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                ESP:Add(player.Character, {
+                    Name = player.Name,
+                    Player = player,
+                    PrimaryPart = player.Character:FindFirstChild("HumanoidRootPart")
+                })
+            end
+        end
+    end
+    
+    -- Setup ESP when players join
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(character)
+            ESP:Add(character, {
+                Name = player.Name,
+                Player = player,
+                PrimaryPart = character:WaitForChild("HumanoidRootPart")
+            })
+        end)
+    end)
+    
+    -- Initial ESP setup
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            ESP:Add(player.Character, {
+                Name = player.Name,
+                Player = player,
+                PrimaryPart = player.Character:FindFirstChild("HumanoidRootPart")
+            })
+        end
+    end
     
     -- Aimbot Functions
     local function isVisible(part)
@@ -381,322 +354,80 @@ local function startScript()
         return players[1]
     end
     
-    -- Create UI System
-    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
-    local Window = Library:CreateWindow("TOS Industries V1")
-    
-    -- Create Tabs
-    local AimbotTab = Window:AddTab("Aimbot")
-    local VisualsTab = Window:AddTab("Visuals")
-    
-    -- Create Groups
-    local MainAimbotGroup = AimbotTab:AddLeftGroupbox("Main Settings")
-    local TargetingGroup = AimbotTab:AddRightGroupbox("Targeting")
-    local BehaviorGroup = AimbotTab:AddLeftGroupbox("Behavior")
-    local SmoothingGroup = AimbotTab:AddRightGroupbox("Smoothing")
-    local PredictionGroup = AimbotTab:AddLeftGroupbox("Prediction")
-    local FOVGroup = AimbotTab:AddRightGroupbox("FOV")
-    local AdvancedGroup = AimbotTab:AddLeftGroupbox("Advanced")
-    
-    local ESPGroup = VisualsTab:AddLeftGroupbox("ESP")
-    local ESPSettingsGroup = VisualsTab:AddRightGroupbox("ESP Settings")
-    
-    -- Main Aimbot Settings
-    MainAimbotGroup:AddToggle("AimbotEnabled", {
-        Text = "Enable Aimbot",
-        Default = false,
-        Callback = function(Value)
-            aimbotActive = Value
+    -- Camera rotation aimbot
+    local function updateCamera(targetPosition)
+        if not aimbotActive or not targetPosition then return end
+        
+        local character = LocalPlayer.Character
+        if not character then return end
+        
+        local humanoid = character:FindFirstChild("Humanoid")
+        if not humanoid then return end
+        
+        -- Calculate angles needed to look at target
+        local cameraPosition = Camera.CFrame.Position
+        local direction = (targetPosition - cameraPosition).Unit
+        
+        -- Convert to angles
+        local x = math.atan2(direction.X, direction.Z)
+        local y = math.asin(direction.Y)
+        
+        if aimbotSmoothing then
+            -- Smooth camera rotation
+            local currentX = Camera.CFrame:ToEulerAnglesYXZ()
+            local deltaX = (x - currentX) / aimbotSmoothingAmount
+            local deltaY = (y - Camera.CFrame:ToEulerAnglesYXZ()) / aimbotSmoothingAmount
+            
+            -- Apply smoothed rotation
+            Camera.CFrame = CFrame.new(cameraPosition) 
+                * CFrame.Angles(0, currentX + deltaX, 0) 
+                * CFrame.Angles(currentY + deltaY, 0, 0)
+        else
+            -- Instant camera rotation
+            Camera.CFrame = CFrame.new(cameraPosition) 
+                * CFrame.Angles(0, x, 0) 
+                * CFrame.Angles(y, 0, 0)
         end
-    })
+    end
     
-    MainAimbotGroup:AddToggle("TeamCheck", {
-        Text = "Team Check",
-        Default = true,
-        Callback = function(Value)
-            aimbotTeamCheck = Value
-        end
-    })
-    
-    MainAimbotGroup:AddToggle("VisibilityCheck", {
-        Text = "Visibility Check",
-        Default = true,
-        Callback = function(Value)
-            aimbotVisibilityCheck = Value
-        end
-    })
-    
-    -- Targeting Settings
-    TargetingGroup:AddDropdown("TargetMode", {
-        Text = "Target Mode",
-        Default = "Distance",
-        Values = {"Distance", "Health", "Random"},
-        Callback = function(Value)
-            aimbotTargetMode = Value
-        end
-    })
-    
-    TargetingGroup:AddDropdown("TargetPart", {
-        Text = "Target Part",
-        Default = "Head",
-        Values = {"Head", "HumanoidRootPart", "Torso"},
-        Callback = function(Value)
-            aimbotTargetPart = Value
-        end
-    })
-    
-    -- Behavior Settings
-    BehaviorGroup:AddToggle("SilentAim", {
-        Text = "Silent Aim",
-        Default = false,
-        Callback = function(Value)
-            aimbotSilent = Value
-        end
-    })
-    
-    BehaviorGroup:AddToggle("AutoShoot", {
-        Text = "Auto Shoot",
-        Default = false,
-        Callback = function(Value)
-            aimbotAutoShoot = Value
-        end
-    })
-    
-    BehaviorGroup:AddToggle("TriggerBot", {
-        Text = "Trigger Bot",
-        Default = false,
-        Callback = function(Value)
-            aimbotTriggerBot = Value
-        end
-    })
-    
-    BehaviorGroup:AddSlider("TriggerDelay", {
-        Text = "Trigger Delay (ms)",
-        Default = 0,
-        Min = 0,
-        Max = 500,
-        Rounding = 0,
-        Callback = function(Value)
-            aimbotTriggerBotDelay = Value / 1000
-        end
-    })
-    
-    BehaviorGroup:AddToggle("AutoReload", {
-        Text = "Auto Reload",
-        Default = false,
-        Callback = function(Value)
-            aimbotAutoReload = Value
-        end
-    })
-    
-    -- Smoothing Settings
-    SmoothingGroup:AddToggle("Smoothing", {
-        Text = "Use Smoothing",
-        Default = true,
-        Callback = function(Value)
-            aimbotSmoothing = Value
-        end
-    })
-    
-    SmoothingGroup:AddSlider("SmoothingAmount", {
-        Text = "Smoothing Amount",
-        Default = 2,
-        Min = 1,
-        Max = 10,
-        Rounding = 1,
-        Callback = function(Value)
-            aimbotSmoothingAmount = Value
-        end
-    })
-    
-    -- Prediction Settings
-    PredictionGroup:AddToggle("Prediction", {
-        Text = "Enable Prediction",
-        Default = true,
-        Callback = function(Value)
-            aimbotPrediction = Value
-        end
-    })
-    
-    PredictionGroup:AddSlider("PredictionAmount", {
-        Text = "Prediction Amount",
-        Default = 0.165,
-        Min = 0,
-        Max = 1,
-        Rounding = 3,
-        Callback = function(Value)
-            aimbotPredictionAmount = Value
-        end
-    })
-    
-    -- FOV Settings
-    FOVGroup:AddToggle("ShowFOV", {
-        Text = "Show FOV",
-        Default = true,
-        Callback = function(Value)
-            showFOV = Value
-            if fovCircle then
-                fovCircle.Visible = Value
-            end
-        end
-    })
-    
-    FOVGroup:AddSlider("FOVSize", {
-        Text = "FOV Size",
-        Default = 120,
-        Min = 30,
-        Max = 800,
-        Rounding = 0,
-        Callback = function(Value)
-            fovSize = Value
-            if fovCircle then
-                fovCircle.Radius = Value
-            end
-        end
-    })
-    
-    -- Advanced Settings
-    AdvancedGroup:AddToggle("Wallbang", {
-        Text = "Wallbang",
-        Default = false,
-        Callback = function(Value)
-            aimbotWallbang = Value
-        end
-    })
-    
-    AdvancedGroup:AddToggle("JumpCheck", {
-        Text = "Jump Check",
-        Default = false,
-        Callback = function(Value)
-            aimbotJumpCheck = Value
-        end
-    })
-    
-    AdvancedGroup:AddToggle("DisableOnJump", {
-        Text = "Disable While Jumping",
-        Default = false,
-        Callback = function(Value)
-            aimbotDisableOnJump = Value
-        end
-    })
-    
-    -- ESP Settings
-    ESPGroup:AddToggle("ESPEnabled", {
-        Text = "Enable ESP",
-        Default = false,
-        Callback = function(Value)
-            ESP.Enabled = Value
-        end
-    })
-    
-    ESPGroup:AddToggle("BoxESP", {
-        Text = "Show Boxes",
-        Default = true,
-        Callback = function(Value)
-            ESP.ShowBox = Value
-        end
-    })
-    
-    ESPGroup:AddToggle("HealthESP", {
-        Text = "Show Health",
-        Default = true,
-        Callback = function(Value)
-            ESP.ShowHealth = Value
-        end
-    })
-    
-    ESPGroup:AddToggle("NameESP", {
-        Text = "Show Names",
-        Default = true,
-        Callback = function(Value)
-            ESP.ShowName = Value
-        end
-    })
-    
-    ESPGroup:AddToggle("DistanceESP", {
-        Text = "Show Distance",
-        Default = true,
-        Callback = function(Value)
-            ESP.ShowDistance = Value
-        end
-    })
-    
-    ESPGroup:AddToggle("TracerESP", {
-        Text = "Show Tracers",
-        Default = true,
-        Callback = function(Value)
-            ESP.ShowTracer = Value
-        end
-    })
-    
-    -- ESP Settings
-    ESPSettingsGroup:AddToggle("ESPTeamCheck", {
-        Text = "Team Check",
-        Default = true,
-        Callback = function(Value)
-            ESP.TeamCheck = Value
-        end
-    })
-    
-    ESPSettingsGroup:AddDropdown("TracerOrigin", {
-        Text = "Tracer Origin",
-        Default = "Bottom",
-        Values = {"Bottom", "Mouse", "Top"},
-        Callback = function(Value)
-            ESP.TracerOrigin = Value
-        end
-    })
-    
-    ESPSettingsGroup:AddSlider("ESPDistance", {
-        Text = "ESP Distance",
-        Default = 1000,
-        Min = 100,
-        Max = 2000,
-        Rounding = 0,
-        Callback = function(Value)
-            ESP.MaxDistance = Value
-        end
-    })
-    
-    -- Update FOV Circle and Aimbot
+    -- Update the aimbot logic
     RunService.RenderStepped:Connect(function()
         if showFOV and fovCircle then
             fovCircle.Position = UserInputService:GetMouseLocation()
+            fovCircle.Visible = true
+        else
+            fovCircle.Visible = false
         end
         
         if not aimbotActive then return end
-        if aimbotDisableOnJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and 
+        if aimbotDisableOnJump and LocalPlayer.Character and 
+           LocalPlayer.Character:FindFirstChild("Humanoid") and 
            math.abs(LocalPlayer.Character.Humanoid.FloorMaterial.Name) == "Air" then return end
         
         local target = getTargetPlayer()
         if not target then return end
         
-        local mousePos = UserInputService:GetMouseLocation()
         local predictedPos = predictPosition(target.Part, 1000)
-        local pos = Camera:WorldToViewportPoint(predictedPos)
-        local aimPos = Vector2.new(pos.X, pos.Y)
         
-        if aimbotSilent then
-            -- Silent aim implementation
-        else
-            if aimbotSmoothing then
-                mousePos = mousePos:Lerp(aimPos, 1 / aimbotSmoothingAmount)
-            else
-                mousePos = aimPos
-            end
-            
-            mousemoverel(mousePos.X - UserInputService:GetMouseLocation().X, mousePos.Y - UserInputService:GetMouseLocation().Y)
+        if not aimbotSilent then
+            -- Regular aimbot - rotate camera
+            updateCamera(predictedPos)
         end
         
+        -- Handle auto shoot
         if aimbotAutoShoot and tick() - lastShotTime > SHOT_COOLDOWN then
-            mouse1press()
-            wait()
-            mouse1release()
-            lastShotTime = tick()
+            local _, onScreen = Camera:WorldToViewportPoint(predictedPos)
+            if onScreen then
+                mouse1press()
+                wait()
+                mouse1release()
+                lastShotTime = tick()
+            end
         end
         
+        -- Handle trigger bot
         if aimbotTriggerBot then
-            local ray = Camera:ScreenPointToRay(mousePos.X, mousePos.Y)
+            local ray = Camera:ScreenPointToRay(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
             local rayParams = RaycastParams.new()
             rayParams.FilterType = Enum.RaycastFilterType.Blacklist
             rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
@@ -716,10 +447,7 @@ local function startScript()
         if fovCircle then
             fovCircle:Remove()
         end
-        ESP.Enabled = false
-        for player, _ in pairs(ESP.Objects) do
-            ESP:RemoveObject(player)
-        end
+        ESP:Toggle(false)
         Library.Unloaded = true
     end)
     
